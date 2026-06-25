@@ -14,6 +14,7 @@ import {
   UserPlus,
   Users,
   Upload,
+  X,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 
@@ -36,21 +37,47 @@ const navItems = [
   { href: "/admin/services", label: "Services", icon: CalendarCheck, roles: ["admin"] },
 ];
 
-export function Sidebar() {
+interface SidebarProps {
+  mobileOpen?: boolean;
+  onClose?: () => void;
+}
+
+export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
   const pathname = usePathname();
   const { user, logout } = useAuth();
   const { theme, setTheme } = useTheme();
 
   const filteredNav = navItems.filter((item) => user && item.roles.includes(user.role));
 
+  const handleNavClick = () => {
+    onClose?.();
+  };
+
   return (
     <aside
-      className="flex h-screen w-72 shrink-0 flex-col border-r border-black/10"
+      className={cn(
+        "flex h-screen w-72 shrink-0 flex-col border-r border-black/10",
+        "fixed inset-y-0 left-0 z-50 transition-transform duration-300 ease-in-out",
+        "lg:relative lg:translate-x-0",
+        mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
+      )}
       style={{ backgroundColor: BRAND.yellow, color: BRAND.black }}
       aria-label="Main navigation"
     >
-      <div className="border-b border-black/10 px-6 py-6">
-        <h1 className="text-xl font-bold tracking-tight" style={{ color: BRAND.black }}>
+      <div className="relative border-b border-black/10 px-6 py-6">
+        {onClose && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="absolute right-3 top-3 h-9 w-9 text-black hover:bg-black/10 lg:hidden"
+            onClick={onClose}
+            aria-label="Close menu"
+          >
+            <X className="h-5 w-5" />
+          </Button>
+        )}
+        <h1 className="text-xl font-bold tracking-tight pr-10 lg:pr-0" style={{ color: BRAND.black }}>
           VKMS
         </h1>
         <p className="mt-1 text-sm opacity-70" style={{ color: BRAND.black }}>
@@ -66,6 +93,7 @@ export function Sidebar() {
             <Link
               key={item.href}
               href={item.href}
+              onClick={handleNavClick}
               aria-current={active ? "page" : undefined}
               className={cn(
                 "flex items-center gap-3 rounded-lg px-3 py-2.5 text-base font-medium transition-all duration-150",
@@ -104,7 +132,10 @@ export function Sidebar() {
           variant="ghost"
           size="sm"
           className="w-full justify-start text-base font-medium text-red-700 hover:bg-black/10 hover:text-red-800 dark:text-red-700 dark:hover:text-red-800"
-          onClick={logout}
+          onClick={() => {
+            onClose?.();
+            logout();
+          }}
         >
           <LogOut className="h-5 w-5 mr-3" />
           Logout
