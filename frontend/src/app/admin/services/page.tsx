@@ -36,6 +36,7 @@ export default function ServicesPage() {
   const [serviceType, setServiceType] = useState("Sunday Service");
   const [customName, setCustomName] = useState("");
   const [serviceDate, setServiceDate] = useState("");
+  const [creating, setCreating] = useState(false);
 
   const { data: types } = useQuery({
     queryKey: ["service-types"],
@@ -68,12 +69,28 @@ export default function ServicesPage() {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (creating) return;
+
     const serviceName = serviceType === CUSTOM_TYPE ? customName.trim() : serviceType;
     if (!serviceName) {
       toast.error("Please enter a service name");
       return;
     }
 
+    if (!serviceDate) {
+      toast.error("Please select a date");
+      return;
+    }
+
+    const alreadyScheduled = services.some(
+      (s) => s.service_name === serviceName && s.service_date === serviceDate,
+    );
+    if (alreadyScheduled) {
+      toast.error(`${serviceName} is already scheduled for this date`);
+      return;
+    }
+
+    setCreating(true);
     try {
       await apiPost("/api/v1/services", {
         service_name: serviceName,
@@ -86,6 +103,8 @@ export default function ServicesPage() {
       queryClient.invalidateQueries({ queryKey: ["services-today"] });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to create service");
+    } finally {
+      setCreating(false);
     }
   };
 
@@ -168,7 +187,9 @@ export default function ServicesPage() {
                 </div>
 
                 <div className="flex items-end sm:col-span-2">
-                  <Button type="submit">Create Service</Button>
+                  <Button type="submit" disabled={creating}>
+                    {creating ? "Creating..." : "Create Service"}
+                  </Button>
                 </div>
               </form>
             </CardContent>

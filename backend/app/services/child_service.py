@@ -5,6 +5,7 @@ from datetime import UTC, date, datetime, timedelta
 
 import qrcode
 from sqlalchemy import func, or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from app.constants import DEFAULT_SERVICE_NAME
@@ -134,8 +135,18 @@ def get_or_create_today_service(db: Session, service_name: str = DEFAULT_SERVICE
     if not service:
         service = Service(service_name=service_name, service_date=today)
         db.add(service)
-        db.commit()
-        db.refresh(service)
+        try:
+            db.commit()
+            db.refresh(service)
+        except IntegrityError:
+            db.rollback()
+            service = (
+                db.query(Service)
+                .filter(Service.service_date == today, Service.service_name == service_name)
+                .first()
+            )
+            if not service:
+                raise
     return service
 
 

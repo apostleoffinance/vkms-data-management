@@ -2,6 +2,7 @@ import uuid
 from datetime import date
 
 from fastapi import APIRouter, HTTPException, status
+from sqlalchemy.exc import IntegrityError
 
 from app.constants import DEFAULT_SERVICE_NAME, PRESET_SERVICE_TYPES
 from app.core.deps import AdminUser, DbSession, VerifiedUser
@@ -11,6 +12,8 @@ from app.services.audit import log_audit
 from app.services.child_service import get_or_create_today_service
 
 router = APIRouter()
+
+DUPLICATE_SERVICE_MESSAGE = "A service with this name is already scheduled for this date"
 
 
 def _service_response(service: Service) -> ServiceResponse:
@@ -78,11 +81,15 @@ def create_service(body: ServiceCreate, db: DbSession, admin: AdminUser) -> Serv
         .first()
     )
     if existing:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Service already exists for this date")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=DUPLICATE_SERVICE_MESSAGE)
 
     service = Service(service_name=service_name, service_date=body.service_date)
     db.add(service)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=DUPLICATE_SERVICE_MESSAGE) from None
     db.refresh(service)
     log_audit(db, "create", "service", user_id=admin.id, resource_id=str(service.id))
     return _service_response(service)
