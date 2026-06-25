@@ -2,6 +2,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import Cookie, Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.core.security import decode_access_token
@@ -10,19 +11,26 @@ from app.models.user import User, UserRole
 
 DbSession = Annotated[Session, Depends(get_db)]
 
+bearer_scheme = HTTPBearer(auto_error=False)
 
-def get_token_from_cookie(access_token: str | None = Cookie(default=None)) -> str:
-    if not access_token:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated",
-        )
-    return access_token
+
+def get_access_token(
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
+    access_token: str | None = Cookie(default=None),
+) -> str:
+    if credentials is not None:
+        return credentials.credentials
+    if access_token:
+        return access_token
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Not authenticated",
+    )
 
 
 def get_current_user(
     db: DbSession,
-    token: Annotated[str, Depends(get_token_from_cookie)],
+    token: Annotated[str, Depends(get_access_token)],
 ) -> User:
     payload = decode_access_token(token)
     if payload is None:

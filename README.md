@@ -362,7 +362,7 @@ Upload `.xlsx` (admin only) via UI or `POST /api/v1/children/bulk-import`.
 - Audit logging on sensitive actions
 - Security headers middleware
 
-**Cross-origin (Vercel + Render):** set `COOKIE_SECURE=true`, `COOKIE_SAMESITE=none`, and include the exact Vercel origin in `CORS_ORIGINS`.
+**Cross-origin (Vercel + Render):** set `COOKIE_SECURE=true`, `COOKIE_SAMESITE=none`, and include the exact Vercel origin in `CORS_ORIGINS`. The frontend also stores the JWT in `sessionStorage` and sends `Authorization: Bearer` headers so login works on mobile browsers (iOS/iPad) where cross-site cookies are blocked.
 
 ---
 
@@ -381,6 +381,7 @@ Upload `.xlsx` (admin only) via UI or `POST /api/v1/children/bulk-import`.
 | Issue | Fix |
 |-------|-----|
 | Login shows "Failed to fetch" | Set `NEXT_PUBLIC_API_URL` on Vercel and **redeploy**; set `CORS_ORIGINS` + `COOKIE_SAMESITE=none` on Render |
+| Login loops on phone/iPad | Deploy latest code (Bearer token auth); clear site data and retry |
 | Render build fails on `pydantic-core` | Set `PYTHON_VERSION=3.12.8` on Render |
 | Slow first request | Render free cold start — use UptimeRobot or upgrade plan |
 | CORS errors | Vercel URL in `CORS_ORIGINS` must match exactly (no trailing slash) |

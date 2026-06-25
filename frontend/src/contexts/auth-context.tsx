@@ -3,8 +3,14 @@
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { apiGet, apiPost } from "@/lib/api";
+import { apiGet, apiPost, ApiError } from "@/lib/api";
+import { clearAccessToken, setAccessToken } from "@/lib/auth-token";
 import type { User } from "@/types";
+
+interface LoginResponse {
+  access_token: string;
+  must_change_password: boolean;
+}
 
 interface AuthContextType {
   user: User | null;
@@ -26,6 +32,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const data = await apiGet<User>("/api/v1/auth/me");
       setUser(data);
     } catch {
+      clearAccessToken();
       setUser(null);
     }
   }, []);
@@ -35,18 +42,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [refreshUser]);
 
   const login = async (email: string, password: string) => {
-    const data = await apiPost<{ must_change_password: boolean }>("/api/v1/auth/login", {
-      email,
-      password,
-    });
-    await refreshUser();
-    return data;
+    const data = await apiPost<LoginResponse>("/api/v1/auth/login", { email, password });
+    setAccessToken(data.access_token);
+    try {
+      const me = await apiGet<User>("/api/v1/auth/me");
+      setUser(me);
+    } catch (err) {
+      clearAccessToken();
+      setUser(null);
+      throw err instanceof ApiError ? err : new Error("Login failed");
+    }
+    return { must_change_password: data.must_change_password };
   };
 
   const logout = async () => {
     try {
       await apiPost("/api/v1/auth/logout");
     } finally {
+      clearAccessToken();
       setUser(null);
       router.push("/login");
     }

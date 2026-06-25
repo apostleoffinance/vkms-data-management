@@ -14,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { apiGet, getExportUrl } from "@/lib/api";
+import { apiDownload, apiGet } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 
 export default function ReportsPage() {
@@ -41,9 +41,10 @@ export default function ReportsPage() {
     );
   }
 
-  const handleExport = (format: string) => {
-    const url = getExportUrl({ report_type: reportType, format, report });
-    window.open(url, "_blank");
+  const handleExport = async (format: string) => {
+    const params = new URLSearchParams({ report_type: reportType, format, report });
+    const ext = format === "excel" ? "xlsx" : format;
+    await apiDownload(`/api/v1/reports/export?${params.toString()}`, `vkms-${report}.${ext}`);
   };
 
   return (
