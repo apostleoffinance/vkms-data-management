@@ -9,7 +9,7 @@ A production-ready children church attendance and check-in/check-out management 
 │  Next.js 15 │────▶│   FastAPI   │────▶│  PostgreSQL  │
 │  Frontend   │     │   Backend   │     │   Database   │
 └─────────────┘     └─────────────┘     └──────────────┘
-     :3000               :8000               :5432
+     :3000               :8000          (postgres internal)
 ```
 
 ### Tech Stack
@@ -145,23 +145,37 @@ Upload an Excel file (`.xlsx`) with columns:
 
 Use `POST /api/v1/children/bulk-import` (admin only).
 
-## Production Deployment (Oracle Cloud / Ubuntu VPS)
+## Production Deployment
 
-For HTTPS, Nginx reverse proxy, secured PostgreSQL, and single-command production startup:
+### Cloud ($0) — Neon + Render + Vercel (recommended if Oracle signup fails)
+
+```bash
+# Push code, then follow the dashboard steps in:
+```
+
+**[deploy/DEPLOYMENT-CLOUD.md](deploy/DEPLOYMENT-CLOUD.md)** — step-by-step for Neon database, Render API, Vercel frontend.
+
+| Service | Platform |
+|---------|----------|
+| Frontend | Vercel |
+| Backend | Render |
+| Database | Neon PostgreSQL |
+
+### VPS — Oracle Cloud / Ubuntu (always-on, no cold starts)
 
 ```bash
 cp .env.production .env
-# Edit .env with your domains and secrets
 docker compose -f docker-compose.prod.yml up -d --build
 ./deploy/scripts/init-letsencrypt.sh
 ```
 
-Full guide: **[deploy/DEPLOYMENT.md](deploy/DEPLOYMENT.md)** — Oracle Cloud setup, firewall rules, SSL, backups, and operations.
+**[deploy/DEPLOYMENT.md](deploy/DEPLOYMENT.md)** — Oracle Cloud VM, Nginx, SSL, backups.
 
 | Environment | Compose file | Public ports |
 |-------------|--------------|--------------|
-| Local dev | `docker-compose.yml` | 3000, 8000, 5432, 5050 |
-| Production | `docker-compose.prod.yml` | 80, 443 (nginx only) |
+| Local dev | `docker-compose.yml` | 3000, 8000, 5050 |
+| VPS production | `docker-compose.prod.yml` | 80, 443 (nginx only) |
+| Cloud production | Render + Vercel + Neon | HTTPS on each platform |
 
 ## Environment Variables
 

@@ -47,7 +47,7 @@ def login(request: Request, response: Response, body: LoginRequest, db: DbSessio
         value=token,
         httponly=True,
         secure=settings.COOKIE_SECURE,
-        samesite=settings.COOKIE_SAMESITE,
+        samesite=settings.COOKIE_SAMESITE,  # use "none" for Vercel + Render cross-origin
         max_age=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         path="/",
     )
@@ -60,7 +60,12 @@ def login(request: Request, response: Response, body: LoginRequest, db: DbSessio
 
 @router.post("/logout", response_model=MessageResponse)
 def logout(response: Response, current_user: CurrentUser, db: DbSession) -> MessageResponse:
-    response.delete_cookie(key="access_token", path="/")
+    response.delete_cookie(
+        key="access_token",
+        path="/",
+        secure=settings.COOKIE_SECURE,
+        samesite=settings.COOKIE_SAMESITE,
+    )
     log_audit(db, "logout", "user", user_id=current_user.id, resource_id=str(current_user.id))
     return MessageResponse(message="Logged out successfully")
 

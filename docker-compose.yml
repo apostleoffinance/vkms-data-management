@@ -7,8 +7,8 @@ services:
       POSTGRES_DB: vkms_db
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
+    # Internal only — avoids conflict with local PostgreSQL on host port 5432.
+    # Shell access: docker compose exec postgres psql -U vkms -d vkms_db
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U vkms -d vkms_db"]
       interval: 5s
