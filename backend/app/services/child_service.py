@@ -8,7 +8,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
-from app.constants import DEFAULT_SERVICE_NAME
+from app.constants import DEFAULT_CLASS_NAME, DEFAULT_SERVICE_NAME
 from app.models.attendance import Attendance
 from app.models.child import Child, Gender
 from app.models.class_model import Class
@@ -39,6 +39,36 @@ def generate_qr_code(child_code: str, child_id: uuid.UUID) -> str:
 
 def normalize_phone(phone: str) -> str:
     return re.sub(r"\D", "", phone.strip())
+
+
+_EMPTY_PLACEHOLDERS = frozenset({"nil", "n/a", "na", "none", "-", "--", "—", "n.a.", "n.a"})
+
+
+def is_empty_placeholder(value: object | None) -> bool:
+    if value is None:
+        return True
+    text = str(value).strip().lower()
+    if not text:
+        return True
+    return text in _EMPTY_PLACEHOLDERS or text.replace(".", "") == "na"
+
+
+def cell_to_optional_str(value: object | None) -> str | None:
+    if is_empty_placeholder(value):
+        return None
+    return str(value).strip()
+
+
+def cell_to_required_str(value: object | None, field_name: str) -> str:
+    text = cell_to_optional_str(value)
+    if not text:
+        raise ValueError(f"{field_name} is required")
+    return text
+
+
+def find_class_by_name(db: Session, class_name: object | None) -> Class | None:
+    name = cell_to_optional_str(class_name) or DEFAULT_CLASS_NAME
+    return db.query(Class).filter(func.lower(Class.name) == name.lower()).first()
 
 
 def find_parent_by_phone(db: Session, phone: str) -> Parent | None:
