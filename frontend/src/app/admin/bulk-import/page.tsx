@@ -54,8 +54,9 @@ export default function BulkImportPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              Upload an .xlsx file with columns: First Name, Last Name, Gender, DOB, Class,
-              Parent First/Last Name, Phone, Alt Phone, Email, Address, Medical Notes.
+              Upload a Google Form or Excel export (.xlsx). Column headers are detected automatically
+              (Timestamp is ignored). Supports combined parent names, class aliases like Age 4-7 or
+              Teens class, and auto-routes phone, email, and address fields.
             </p>
             <Button
               disabled={uploading}

@@ -6,7 +6,6 @@ from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
 from openpyxl import load_workbook
 
 from app.core.deps import AdminUser, DbSession, VerifiedUser
-from app.constants import DEFAULT_CLASS_NAME
 from app.models.child import Child, Gender
 from app.models.class_model import Class
 from app.schemas.child import (
@@ -17,16 +16,19 @@ from app.schemas.child import (
     ChildUpdate,
 )
 from app.services.audit import log_audit
+from app.services.bulk_import_service import (
+    ImportColumnMap,
+    build_column_map,
+    looks_like_header_row,
+    parse_import_row,
+)
 from app.services.child_service import (
-    cell_to_optional_str,
-    cell_to_required_str,
     find_class_by_name,
     generate_child_code,
     generate_qr_code,
     get_child_detail,
     get_or_create_parent,
     is_empty_placeholder,
-    normalize_phone,
     search_children,
 )
 
@@ -189,37 +191,55 @@ def bulk_import(
     content = file.file.read()
     wb = load_workbook(io.BytesIO(content), read_only=True)
     ws = wb.active
-    rows = list(ws.iter_rows(min_row=2, values_only=True))
+    all_rows = list(ws.iter_rows(values_only=True))
+    if not all_rows:
+        return {"created": 0, "errors": ["Spreadsheet is empty"]}
+
+    headers = tuple(all_rows[0])
+    col_map: ImportColumnMap = (
+        build_column_map(headers) if looks_like_header_row(headers) else ImportColumnMap()
+    )
+    data_rows = all_rows[1:]
     created = 0
     errors = []
 
-    for i, row in enumerate(rows, start=2):
+    for i, row in enumerate(data_rows, start=2):
         if not row:
             continue
-        first_name = cell_to_optional_str(row[0] if len(row) > 0 else None)
-        if not first_name:
+        first_col = col_map.child_first_name if col_map.child_first_name is not None else 0
+        if is_empty_placeholder(row[first_col] if len(row) > first_col else None):
             continue
         try:
-            class_ = find_class_by_name(db, row[4] if len(row) > 4 else None)
+            parsed = parse_import_row(tuple(row), col_map)
+
+            class_ = find_class_by_name(db, parsed.class_name)
             if not class_:
-                class_label = cell_to_optional_str(row[4] if len(row) > 4 else None) or DEFAULT_CLASS_NAME
-                errors.append(f"Row {i}: Class '{class_label}' not found")
+                label = parsed.class_name or "default class"
+                errors.append(f"Row {i}: Class '{label}' not found")
                 continue
 
-            parent_phone = cell_to_required_str(row[7] if len(row) > 7 else None, "Parent phone")
-            if len(normalize_phone(parent_phone)) < 7:
-                errors.append(f"Row {i}: Parent phone is invalid")
+            existing_child = (
+                db.query(Child)
+                .filter(
+                    Child.first_name.ilike(parsed.child_first_name),
+                    Child.last_name.ilike(parsed.child_last_name),
+                    Child.date_of_birth == parsed.date_of_birth,
+                )
+                .first()
+            )
+            if existing_child:
+                errors.append(f"Row {i}: Child already registered (skipped)")
                 continue
 
             try:
                 parent, _ = get_or_create_parent(
                     db,
-                    first_name=cell_to_required_str(row[5] if len(row) > 5 else None, "Parent first name"),
-                    last_name=cell_to_required_str(row[6] if len(row) > 6 else None, "Parent last name"),
-                    phone=parent_phone,
-                    alternative_phone=cell_to_optional_str(row[8] if len(row) > 8 else None),
-                    email=cell_to_optional_str(row[9] if len(row) > 9 else None),
-                    address=cell_to_optional_str(row[10] if len(row) > 10 else None),
+                    first_name=parsed.parent.first_name,
+                    last_name=parsed.parent.last_name,
+                    phone=parsed.parent.phone,
+                    alternative_phone=parsed.parent.alternative_phone,
+                    email=parsed.parent.email,
+                    address=parsed.parent.address,
                 )
             except ValueError as exc:
                 errors.append(f"Row {i}: {exc}")
@@ -229,35 +249,30 @@ def bulk_import(
             child_id = uuid.uuid4()
             qr_data = generate_qr_code(child_code, child_id)
 
-            dob_raw = row[3] if len(row) > 3 else None
-            if is_empty_placeholder(dob_raw):
-                errors.append(f"Row {i}: Date of birth is required")
+            try:
+                gender = Gender(parsed.gender.lower())
+            except ValueError:
+                errors.append(f"Row {i}: Invalid gender '{parsed.gender}'")
                 continue
-
-            dob = dob_raw
-            if hasattr(dob, "date"):
-                dob = dob.date()
-            elif isinstance(dob, str):
-                dob = date.fromisoformat(dob.strip())
-
-            gender_raw = cell_to_required_str(row[2] if len(row) > 2 else None, "Gender")
 
             child = Child(
                 id=child_id,
                 child_code=child_code,
-                first_name=first_name,
-                last_name=cell_to_required_str(row[1] if len(row) > 1 else None, "Last name"),
-                gender=Gender(gender_raw.lower()),
-                date_of_birth=dob,
+                first_name=parsed.child_first_name,
+                last_name=parsed.child_last_name,
+                gender=gender,
+                date_of_birth=parsed.date_of_birth,
                 parent_id=parent.id,
                 class_id=class_.id,
-                medical_notes=cell_to_optional_str(row[11] if len(row) > 11 else None),
+                medical_notes=parsed.medical_notes,
                 registration_date=date.today(),
                 qr_code_data=qr_data,
             )
             db.add(child)
             db.commit()
             created += 1
+        except ValueError as exc:
+            errors.append(f"Row {i}: {exc}")
         except Exception as e:
             db.rollback()
             errors.append(f"Row {i}: {str(e)}")

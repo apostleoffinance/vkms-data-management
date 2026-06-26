@@ -8,7 +8,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
-from app.constants import DEFAULT_CLASS_NAME, DEFAULT_SERVICE_NAME
+from app.constants import CLASS_IMPORT_ALIASES, DEFAULT_CLASS_NAME, DEFAULT_SERVICE_NAME
 from app.models.attendance import Attendance
 from app.models.child import Child, Gender
 from app.models.class_model import Class
@@ -66,8 +66,37 @@ def cell_to_required_str(value: object | None, field_name: str) -> str:
     return text
 
 
+_CLASS_RANGE_RE = re.compile(r"(\d+)\s*[-–]\s*(\d+)")
+_AGE_CLASS_CANONICAL = {
+    (1, 3): "Ages 1-3",
+    (4, 7): "Ages 4-7",
+    (8, 12): "Ages 8-12",
+    (13, 16): "Ages 13-16",
+}
+
+
+def resolve_class_alias(class_name: object | None) -> str:
+    raw = cell_to_optional_str(class_name) or DEFAULT_CLASS_NAME
+    lowered = raw.lower().strip()
+    lowered = re.sub(r"\s+", " ", lowered)
+
+    if lowered in CLASS_IMPORT_ALIASES:
+        return CLASS_IMPORT_ALIASES[lowered]
+
+    match = _CLASS_RANGE_RE.search(lowered.replace("ages", "age"))
+    if match:
+        age_range = (int(match.group(1)), int(match.group(2)))
+        if age_range in _AGE_CLASS_CANONICAL:
+            return _AGE_CLASS_CANONICAL[age_range]
+
+    if "teen" in lowered:
+        return "Ages 13-16"
+
+    return raw
+
+
 def find_class_by_name(db: Session, class_name: object | None) -> Class | None:
-    name = cell_to_optional_str(class_name) or DEFAULT_CLASS_NAME
+    name = resolve_class_alias(class_name)
     return db.query(Class).filter(func.lower(Class.name) == name.lower()).first()
 
 
