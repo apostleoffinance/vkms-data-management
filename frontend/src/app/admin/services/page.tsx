@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
@@ -16,7 +17,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { apiGet, apiPost } from "@/lib/api";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { apiDelete, apiGet, apiPost } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
 import type { Service } from "@/types";
 import { useAuth } from "@/contexts/auth-context";
@@ -37,6 +48,8 @@ export default function ServicesPage() {
   const [customName, setCustomName] = useState("");
   const [serviceDate, setServiceDate] = useState("");
   const [creating, setCreating] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<Service | null>(null);
 
   const { data: types } = useQuery({
     queryKey: ["service-types"],
@@ -67,6 +80,11 @@ export default function ServicesPage() {
     setServiceDate("");
   };
 
+  const invalidateServices = () => {
+    queryClient.invalidateQueries({ queryKey: ["services"] });
+    queryClient.invalidateQueries({ queryKey: ["services-today"] });
+  };
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (creating) return;
@@ -82,11 +100,9 @@ export default function ServicesPage() {
       return;
     }
 
-    const alreadyScheduled = services.some(
-      (s) => s.service_name === serviceName && s.service_date === serviceDate,
-    );
-    if (alreadyScheduled) {
-      toast.error(`${serviceName} is already scheduled for this date`);
+    const dateTaken = services.some((s) => s.service_date === serviceDate);
+    if (dateTaken) {
+      toast.error("A service is already scheduled for this date");
       return;
     }
 
@@ -99,12 +115,26 @@ export default function ServicesPage() {
       toast.success("Service created");
       setShowForm(false);
       resetForm();
-      queryClient.invalidateQueries({ queryKey: ["services"] });
-      queryClient.invalidateQueries({ queryKey: ["services-today"] });
+      invalidateServices();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to create service");
     } finally {
       setCreating(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!confirmDelete) return;
+    setDeletingId(confirmDelete.id);
+    try {
+      await apiDelete(`/api/v1/services/${confirmDelete.id}`);
+      toast.success("Service deleted");
+      invalidateServices();
+      setConfirmDelete(null);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete service");
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -115,7 +145,8 @@ export default function ServicesPage() {
           <div>
             <h1 className="text-3xl font-bold">Service Management</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              {defaultService} is the default service type. You can also schedule custom services.
+              Only one service can be scheduled per date. {defaultService} is auto-created on days
+              with no scheduled service.
             </p>
           </div>
           <Button
@@ -133,7 +164,7 @@ export default function ServicesPage() {
             <CardHeader>
               <CardTitle>New Service</CardTitle>
               <CardDescription>
-                Choose a service type or enter a custom name for special events.
+                Schedule a service for a specific date. That date cannot have another service.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -206,20 +237,49 @@ export default function ServicesPage() {
             ) : (
               <div className="space-y-2">
                 {services.map((s) => (
-                  <div key={s.id} className="flex justify-between rounded-lg border p-4">
-                    <span className="font-medium">
-                      {s.service_name}
-                      {s.service_name === defaultService && (
-                        <span className="ml-2 text-xs text-muted-foreground">(default type)</span>
-                      )}
-                    </span>
-                    <span className="text-muted-foreground">{formatDate(s.service_date)}</span>
+                  <div key={s.id} className="flex items-center justify-between rounded-lg border p-4 gap-4">
+                    <div>
+                      <span className="font-medium">{s.service_name}</span>
+                      <p className="text-sm text-muted-foreground mt-1">{formatDate(s.service_date)}</p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="text-destructive hover:text-destructive shrink-0"
+                      disabled={deletingId === s.id}
+                      onClick={() => setConfirmDelete(s)}
+                      aria-label={`Delete ${s.service_name}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   </div>
                 ))}
               </div>
             )}
           </CardContent>
         </Card>
+
+        <AlertDialog open={!!confirmDelete} onOpenChange={(open) => !open && setConfirmDelete(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete service?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Delete {confirmDelete?.service_name} on{" "}
+                {confirmDelete ? formatDate(confirmDelete.service_date) : ""}? This is only allowed if
+                no children or workers have been checked in for this service.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={handleDelete}
+              >
+                {deletingId ? "Deleting..." : "Delete Service"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </DashboardLayout>
   );

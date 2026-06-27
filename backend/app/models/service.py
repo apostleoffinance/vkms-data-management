@@ -10,7 +10,7 @@ from app.database import Base
 
 class Service(Base):
     __tablename__ = "services"
-    __table_args__ = (UniqueConstraint("service_name", "service_date", name="uq_services_name_date"),)
+    __table_args__ = (UniqueConstraint("service_date", name="uq_services_service_date"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     service_name: Mapped[str] = mapped_column(String(100), nullable=False)

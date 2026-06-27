@@ -2,11 +2,13 @@ import uuid
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException, Query, status
+from sqlalchemy import func, or_
 from sqlalchemy.orm import joinedload
 
 from app.core.deps import DbSession, VerifiedUser
 from app.models.attendance import Attendance
 from app.models.child import Child
+from app.models.parent import Parent
 from app.schemas.attendance import (
     AttendanceResponse,
     CheckInRequest,
@@ -17,6 +19,25 @@ from app.services.audit import log_audit
 from app.services.child_service import get_next_tag_number, get_or_create_today_service
 
 router = APIRouter()
+
+
+def _attendance_query(db: DbSession):
+    return db.query(Attendance).options(
+        joinedload(Attendance.child).joinedload(Child.parent),
+        joinedload(Attendance.child).joinedload(Child.class_),
+        joinedload(Attendance.checked_out_by_user),
+    )
+
+
+def _resolve_service(db: DbSession, service_id: str | None):
+    if service_id:
+        from app.models.service import Service
+
+        service = db.query(Service).filter(Service.id == uuid.UUID(service_id)).first()
+        if not service:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Service not found")
+        return service
+    return get_or_create_today_service(db)
 
 
 def _attendance_response(record: Attendance) -> AttendanceResponse:
@@ -60,6 +81,45 @@ def list_attendance(
     return [_attendance_response(r) for r in records]
 
 
+@router.get("/search", response_model=list[AttendanceResponse])
+def search_checked_in(
+    q: str = Query(min_length=1),
+    service_id: str = Query(min_length=1),
+    db: DbSession = ...,
+    current_user: VerifiedUser = ...,
+) -> list[AttendanceResponse]:
+    """Find children currently checked in (not yet checked out) for a service."""
+    service = _resolve_service(db, service_id)
+    term = q.strip()
+    search_term = f"%{term}%"
+    filters = [
+        Child.first_name.ilike(search_term),
+        Child.last_name.ilike(search_term),
+        func.concat(Child.first_name, " ", Child.last_name).ilike(search_term),
+        Child.child_code.ilike(search_term),
+        Parent.first_name.ilike(search_term),
+        Parent.last_name.ilike(search_term),
+        func.concat(Parent.first_name, " ", Parent.last_name).ilike(search_term),
+    ]
+    if term.isdigit():
+        filters.append(Attendance.tag_number == term.zfill(3))
+
+    records = (
+        _attendance_query(db)
+        .join(Child)
+        .join(Parent)
+        .filter(
+            Attendance.service_id == service.id,
+            Attendance.checked_out.is_(False),
+            or_(*filters),
+        )
+        .order_by(Child.first_name, Child.last_name)
+        .limit(25)
+        .all()
+    )
+    return [_attendance_response(r) for r in records]
+
+
 @router.get("/tag/{tag_number}", response_model=AttendanceResponse)
 def get_by_tag(
     tag_number: str,
@@ -67,21 +127,10 @@ def get_by_tag(
     current_user: VerifiedUser,
     service_id: str | None = Query(default=None),
 ) -> AttendanceResponse:
-    if service_id:
-        from app.models.service import Service
-        service = db.query(Service).filter(Service.id == uuid.UUID(service_id)).first()
-        if not service:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Service not found")
-    else:
-        service = get_or_create_today_service(db)
+    service = _resolve_service(db, service_id)
 
     record = (
-        db.query(Attendance)
-        .options(
-            joinedload(Attendance.child).joinedload(Child.parent),
-            joinedload(Attendance.child).joinedload(Child.class_),
-            joinedload(Attendance.checked_out_by_user),
-        )
+        _attendance_query(db)
         .filter(Attendance.tag_number == tag_number.zfill(3), Attendance.service_id == service.id)
         .first()
     )
@@ -102,10 +151,7 @@ def check_in(body: CheckInRequest, db: DbSession, current_user: VerifiedUser) ->
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Child not found")
 
     if body.service_id:
-        from app.models.service import Service
-        service = db.query(Service).filter(Service.id == uuid.UUID(body.service_id)).first()
-        if not service:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Service not found")
+        service = _resolve_service(db, body.service_id)
     else:
         service = get_or_create_today_service(db)
 
@@ -161,21 +207,10 @@ def check_in(body: CheckInRequest, db: DbSession, current_user: VerifiedUser) ->
 
 @router.post("/check-out", response_model=AttendanceResponse)
 def check_out(body: CheckOutRequest, db: DbSession, current_user: VerifiedUser) -> AttendanceResponse:
-    if body.service_id:
-        from app.models.service import Service
-        service = db.query(Service).filter(Service.id == uuid.UUID(body.service_id)).first()
-        if not service:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Service not found")
-    else:
-        service = get_or_create_today_service(db)
+    service = _resolve_service(db, body.service_id)
 
     record = (
-        db.query(Attendance)
-        .options(
-            joinedload(Attendance.child).joinedload(Child.parent),
-            joinedload(Attendance.child).joinedload(Child.class_),
-            joinedload(Attendance.checked_out_by_user),
-        )
+        _attendance_query(db)
         .filter(
             Attendance.tag_number == body.tag_number.zfill(3),
             Attendance.service_id == service.id,

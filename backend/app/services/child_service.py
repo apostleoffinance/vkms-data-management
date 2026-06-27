@@ -184,28 +184,32 @@ def get_or_create_parent(
     return parent, True
 
 
-def get_or_create_today_service(db: Session, service_name: str = DEFAULT_SERVICE_NAME) -> Service:
-    today = date.today()
-    service = (
+def get_service_for_date(db: Session, target: date) -> Service | None:
+    return (
         db.query(Service)
-        .filter(Service.service_date == today, Service.service_name == service_name)
+        .filter(Service.service_date == target)
+        .order_by(Service.created_at.asc())
         .first()
     )
-    if not service:
-        service = Service(service_name=service_name, service_date=today)
-        db.add(service)
-        try:
-            db.commit()
-            db.refresh(service)
-        except IntegrityError:
-            db.rollback()
-            service = (
-                db.query(Service)
-                .filter(Service.service_date == today, Service.service_name == service_name)
-                .first()
-            )
-            if not service:
-                raise
+
+
+def get_or_create_today_service(db: Session, service_name: str = DEFAULT_SERVICE_NAME) -> Service:
+    today = date.today()
+    existing = get_service_for_date(db, today)
+    if existing:
+        return existing
+
+    service = Service(service_name=service_name, service_date=today)
+    db.add(service)
+    try:
+        db.commit()
+        db.refresh(service)
+    except IntegrityError:
+        db.rollback()
+        existing = get_service_for_date(db, today)
+        if not existing:
+            raise
+        return existing
     return service
 
 
@@ -324,35 +328,35 @@ def get_child_detail(db: Session, child_id: uuid.UUID) -> dict | None:
 
 def get_dashboard_stats(db: Session, target_date: date | None = None) -> dict:
     target = target_date or date.today()
-    service = (
-        db.query(Service).filter(Service.service_date == target).first()
-    )
+    service_ids = [
+        s.id for s in db.query(Service.id).filter(Service.service_date == target).all()
+    ]
 
     total_children = db.query(Child).filter(Child.is_active.is_(True)).count()
 
     children_present = 0
     currently_checked_in = 0
     already_checked_out = 0
-    if service:
+    if service_ids:
         children_present = (
-            db.query(Attendance).filter(Attendance.service_id == service.id).count()
+            db.query(Attendance).filter(Attendance.service_id.in_(service_ids)).count()
         )
         currently_checked_in = (
             db.query(Attendance)
-            .filter(Attendance.service_id == service.id, Attendance.checked_out.is_(False))
+            .filter(Attendance.service_id.in_(service_ids), Attendance.checked_out.is_(False))
             .count()
         )
         already_checked_out = (
             db.query(Attendance)
-            .filter(Attendance.service_id == service.id, Attendance.checked_out.is_(True))
+            .filter(Attendance.service_id.in_(service_ids), Attendance.checked_out.is_(True))
             .count()
         )
 
     workers_present = 0
-    if service:
+    if service_ids:
         workers_present = (
             db.query(WorkerAttendance)
-            .filter(WorkerAttendance.service_id == service.id)
+            .filter(WorkerAttendance.service_id.in_(service_ids))
             .count()
         )
 

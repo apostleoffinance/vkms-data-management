@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { Search } from "lucide-react";
 import { toast } from "sonner";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
@@ -9,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { EmptyState } from "@/components/ui/loading";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,8 +26,12 @@ import { apiGet, apiPost } from "@/lib/api";
 import { formatDateTime } from "@/lib/utils";
 import type { AttendanceRecord } from "@/types";
 
+function isTagQuery(value: string): boolean {
+  return /^\d+$/.test(value.trim());
+}
+
 export default function CheckOutPage() {
-  const [tagNumber, setTagNumber] = useState("");
+  const [query, setQuery] = useState("");
   const [record, setRecord] = useState<AttendanceRecord | null>(null);
   const [loading, setLoading] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -37,23 +44,59 @@ export default function CheckOutPage() {
     }
   }, [defaultServiceId]);
 
-  const lookupTag = async () => {
-    if (!tagNumber.trim()) return;
+  useEffect(() => {
+    setRecord(null);
+  }, [query, serviceId]);
+
+  const tagSearch = isTagQuery(query);
+
+  const { data: searchResults = [], isFetching } = useQuery({
+    queryKey: ["attendance-search", query, serviceId],
+    queryFn: () =>
+      apiGet<AttendanceRecord[]>(
+        `/api/v1/attendance/search?q=${encodeURIComponent(query.trim())}&service_id=${serviceId}`,
+      ),
+    enabled: query.trim().length >= 2 && !tagSearch && !!serviceId,
+  });
+
+  const selectRecord = (data: AttendanceRecord) => {
+    setRecord(data);
+    if (data.checked_out) {
+      toast.warning("This child has already been checked out");
+    }
+  };
+
+  const lookup = async () => {
+    const trimmed = query.trim();
+    if (!trimmed) return;
     if (!serviceId) {
       toast.error("Please select a service");
       return;
     }
+
     setLoading(true);
     try {
-      const data = await apiGet<AttendanceRecord>(
-        `/api/v1/attendance/tag/${tagNumber.padStart(3, "0")}?service_id=${serviceId}`,
-      );
-      setRecord(data);
-      if (data.checked_out) {
-        toast.warning("This child has already been checked out");
+      if (tagSearch) {
+        const data = await apiGet<AttendanceRecord>(
+          `/api/v1/attendance/tag/${trimmed.padStart(3, "0")}?service_id=${serviceId}`,
+        );
+        selectRecord(data);
+        return;
       }
+
+      if (searchResults.length === 1) {
+        selectRecord(searchResults[0]);
+        return;
+      }
+
+      if (searchResults.length > 1) {
+        toast.info("Multiple children found — select one from the list below");
+        return;
+      }
+
+      toast.error("No checked-in child found for this service");
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Tag not found");
+      toast.error(err instanceof Error ? err.message : "Lookup failed");
       setRecord(null);
     } finally {
       setLoading(false);
@@ -69,6 +112,7 @@ export default function CheckOutPage() {
         service_id: serviceId,
       });
       setRecord(updated);
+      setQuery("");
       toast.success("Child released successfully");
       setConfirmOpen(false);
     } catch (err) {
@@ -82,29 +126,69 @@ export default function CheckOutPage() {
     <DashboardLayout>
       <div className="space-y-6 max-w-2xl">
         <h1 className="text-3xl font-bold">Check Out</h1>
+        <p className="text-muted-foreground">
+          Look up a checked-in child by tag number or name for the selected service.
+        </p>
 
         <Card>
           <CardHeader>
-            <CardTitle>Enter Tag Number</CardTitle>
+            <CardTitle>Find Child</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <ServiceSelector value={serviceId} onChange={setServiceId} />
 
             <div className="space-y-2">
-              <Label htmlFor="tag">Tag Number</Label>
+              <Label htmlFor="checkout-search">Tag number or child name</Label>
               <div className="flex gap-2">
-                <Input
-                  id="tag"
-                  placeholder="e.g. 001"
-                  value={tagNumber}
-                  onChange={(e) => setTagNumber(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && lookupTag()}
-                />
-                <Button onClick={lookupTag} disabled={loading}>
-                  {loading ? "Looking up..." : "Lookup"}
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="checkout-search"
+                    className="pl-10"
+                    placeholder="e.g. 001 or Emma Johnson"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && lookup()}
+                  />
+                </div>
+                <Button onClick={lookup} disabled={loading || isFetching}>
+                  {loading || isFetching ? "Looking up..." : "Lookup"}
                 </Button>
               </div>
+              <p className="text-xs text-muted-foreground">
+                {tagSearch
+                  ? "Searching by tag number."
+                  : "Type at least 2 characters to search by name, code, or parent name."}
+              </p>
             </div>
+
+            {!tagSearch && query.trim().length >= 2 && !isFetching && searchResults.length === 0 && (
+              <EmptyState
+                title="No checked-in children found"
+                description="Try a different name or confirm the correct service is selected"
+              />
+            )}
+
+            {!tagSearch && searchResults.length > 0 && (
+              <div className="space-y-2">
+                {searchResults.map((item) => (
+                  <div
+                    key={item.id}
+                    className="flex items-center justify-between rounded-lg border p-4 hover:bg-accent/50"
+                  >
+                    <div>
+                      <p className="font-medium">{item.child_name}</p>
+                      <p className="text-sm text-muted-foreground">
+                        Tag {item.tag_number} · {item.class_name} · {item.parent_name}
+                      </p>
+                    </div>
+                    <Button variant={record?.id === item.id ? "default" : "outline"} onClick={() => selectRecord(item)}>
+                      Select
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
 

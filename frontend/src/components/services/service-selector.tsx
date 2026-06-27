@@ -13,12 +13,6 @@ import {
 import { apiGet } from "@/lib/api";
 import type { Service } from "@/types";
 
-interface ServiceTypesResponse {
-  default: string;
-  presets: string[];
-  allow_custom: boolean;
-}
-
 interface ServiceSelectorProps {
   value: string;
   onChange: (serviceId: string) => void;
@@ -29,11 +23,6 @@ export function ServiceSelector({ value, onChange, label = "Service" }: ServiceS
   const { data: services = [], isLoading } = useQuery({
     queryKey: ["services-today"],
     queryFn: () => apiGet<Service[]>("/api/v1/services/today/all"),
-  });
-
-  const { data: types } = useQuery({
-    queryKey: ["service-types"],
-    queryFn: () => apiGet<ServiceTypesResponse>("/api/v1/services/types"),
   });
 
   if (isLoading) {
@@ -49,8 +38,7 @@ export function ServiceSelector({ value, onChange, label = "Service" }: ServiceS
     return null;
   }
 
-  const defaultName = types?.default ?? "Sunday Service";
-  const selected = value || services.find((s) => s.service_name === defaultName)?.id || services[0]?.id;
+  const selected = value || services[0]?.id;
 
   return (
     <div className="space-y-2">
@@ -63,14 +51,13 @@ export function ServiceSelector({ value, onChange, label = "Service" }: ServiceS
           {services.map((service) => (
             <SelectItem key={service.id} value={service.id}>
               {service.service_name}
-              {service.service_name === defaultName ? " (default)" : ""}
             </SelectItem>
           ))}
         </SelectContent>
       </Select>
       {services.length === 1 && (
         <p className="text-xs text-muted-foreground">
-          Only {defaultName} is scheduled today. Add more from Service Management.
+          Today&apos;s service: {services[0].service_name}
         </p>
       )}
     </div>
@@ -83,11 +70,5 @@ export function useDefaultServiceId() {
     queryFn: () => apiGet<Service[]>("/api/v1/services/today/all"),
   });
 
-  const { data: types } = useQuery({
-    queryKey: ["service-types"],
-    queryFn: () => apiGet<ServiceTypesResponse>("/api/v1/services/types"),
-  });
-
-  const defaultName = types?.default ?? "Sunday Service";
-  return services.find((s) => s.service_name === defaultName)?.id ?? services[0]?.id ?? "";
+  return services[0]?.id ?? "";
 }
