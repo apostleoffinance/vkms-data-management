@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     DEFAULT_ADMIN_EMAIL: str = "admin@votagekids.org"
     DEFAULT_ADMIN_PASSWORD: str = "Admin123!"
 
+    GEMINI_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-2.5-flash"
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]

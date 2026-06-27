@@ -4,6 +4,9 @@ from fastapi import APIRouter, Query
 from fastapi.responses import Response
 
 from app.core.deps import DbSession, VerifiedUser
+from app.services.ai_summary_service import generate_executive_summary
+from app.services.analytics_service import build_executive_metrics, metrics_for_ai
+from app.services.executive_report_service import generate_executive_report_pdf
 from app.services.report_service import (
     export_csv,
     export_excel,
@@ -81,5 +84,48 @@ def export_report(
     return Response(
         content=content,
         media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/executive")
+def executive_report_preview(
+    db: DbSession,
+    current_user: VerifiedUser,
+    period: str = Query(
+        default="daily",
+        pattern="^(daily|weekly|monthly|quarterly|yearly)$",
+    ),
+    target_date: date | None = Query(default=None),
+    start_date: date | None = Query(default=None),
+    end_date: date | None = Query(default=None),
+) -> dict:
+    metrics = build_executive_metrics(db, period, target_date, start_date, end_date)
+    ai_metrics = metrics_for_ai(metrics)
+    summary = generate_executive_summary(ai_metrics)
+    return {
+        "metrics": metrics,
+        "summary": summary,
+    }
+
+
+@router.get("/executive/export")
+def executive_report_export(
+    db: DbSession,
+    current_user: VerifiedUser,
+    period: str = Query(
+        default="daily",
+        pattern="^(daily|weekly|monthly|quarterly|yearly)$",
+    ),
+    target_date: date | None = Query(default=None),
+    start_date: date | None = Query(default=None),
+    end_date: date | None = Query(default=None),
+) -> Response:
+    content = generate_executive_report_pdf(db, period, target_date, start_date, end_date)
+    label = (target_date or date.today()).isoformat()
+    filename = f"vkms_executive_report_{period}_{label}.pdf"
+    return Response(
+        content=content,
+        media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
