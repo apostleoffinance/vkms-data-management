@@ -12,6 +12,17 @@ GEMINI_API_URL = (
     "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 )
 
+AI_INSTRUCTIONS = """
+Important rules:
+- Use ONLY numbers from the metrics JSON. Do not invent or extrapolate.
+- "registered_children" is total active children in the database, NOT event registration.
+- "first_check_in_ever_count" means first time checked in on VKMS — NOT first-time church visitors.
+- If attendance_growth_pct is null, do NOT mention growth percentages; refer to attendance_growth_note instead.
+- Never describe growth above 100% as "astounding" or "remarkable" unless attendance_growth_pct is provided and reasonable.
+- If retention_rate_pct is null, do NOT mention a retention percentage.
+- Be warm and professional, but factual and restrained.
+"""
+
 
 def _fallback_summary(metrics: dict) -> dict:
     kpis = metrics.get("kpis", {})
@@ -21,26 +32,47 @@ def _fallback_summary(metrics: dict) -> dict:
     workers = kpis.get("workers_present", 0)
     absent_count = metrics.get("absent_two_services_count", 0)
     growth = kpis.get("attendance_growth_pct")
-    growth_text = f" Attendance changed by {growth}% compared to the previous period." if growth is not None else ""
+    growth_vs = kpis.get("attendance_growth_vs")
+    growth_note = kpis.get("attendance_growth_note")
+
+    if growth is not None and growth_vs:
+        growth_text = f" Attendance changed by {growth}% vs {growth_vs}."
+    elif growth_note:
+        growth_text = f" {growth_note}."
+    else:
+        growth_text = ""
+
+    returning_label = retention.get("returning_label", "returning_count")
+    returning = retention.get("returning_count", 0)
+    first_check_in = retention.get("first_check_in_ever_count", 0)
+    retention_rate = retention.get("retention_rate_pct")
+    retention_note = retention.get("retention_note") or ""
+
+    retention_text = ""
+    if retention_rate is not None:
+        retention_text = f" Retention rate: {retention_rate}% ({retention_note})."
 
     return {
         "executive_summary": (
             f"This report covers {period}. {present} children were present with "
-            f"{workers} workers on duty.{growth_text} "
-            f"{retention.get('first_time_visitors', 0)} first-time visitors were recorded, "
-            f"and {absent_count} children have been absent for the last two services and may "
+            f"{workers} workers on duty.{growth_text}"
+            f" {returning} children returned from the previous service period and "
+            f"{first_check_in} had their first-ever check-in on the system."
+            f"{retention_text} "
+            f"{absent_count} children have been absent for the last two services and may "
             f"need follow-up."
         ),
         "key_insights": [
             f"{present} children attended during {period}.",
             f"Worker-to-child ratio: 1:{kpis.get('worker_to_child_ratio', 'N/A')}.",
-            f"{retention.get('returning_count', 0)} returning children in this period.",
+            f"{returning} {returning_label.replace('_', ' ')}.",
+            f"{first_check_in} first-ever system check-ins (not necessarily new visitors).",
             f"{absent_count} children absent for 2+ consecutive services.",
         ],
         "recommendations": [
             "Follow up with families of absent children listed in this report.",
             "Review worker staffing against attendance levels.",
-            "Celebrate and welcome first-time visitors.",
+            "Welcome children checking in for the first time on the system.",
         ],
     }
 
@@ -69,12 +101,14 @@ def generate_executive_summary(metrics: dict) -> dict:
 
 Based on the metrics below, write a warm, professional report for pastors and ministry leaders.
 
+{AI_INSTRUCTIONS}
+
 Return ONLY valid JSON with these keys:
 - "executive_summary": string, 2-3 paragraphs
 - "key_insights": array of 3-5 short bullet strings
 - "recommendations": array of 3-5 actionable bullet strings
 
-Do not invent numbers. Use only the data provided. Do not include personal contact details.
+Do not include personal contact details.
 
 Metrics:
 {json.dumps(metrics, indent=2)}

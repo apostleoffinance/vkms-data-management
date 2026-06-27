@@ -57,6 +57,40 @@ def _service_ids_in_range(db: Session, start: date, end: date) -> list:
     ]
 
 
+MIN_GROWTH_BASELINE = 10
+
+
+def _previous_service_date(db: Session, before: date) -> date | None:
+    row = (
+        db.query(Service.service_date)
+        .filter(Service.service_date < before)
+        .distinct()
+        .order_by(Service.service_date.desc())
+        .first()
+    )
+    return row[0] if row else None
+
+
+def _attendance_count_for_dates(db: Session, start: date, end: date) -> int:
+    service_ids = _service_ids_in_range(db, start, end)
+    if not service_ids:
+        return 0
+    return db.query(Attendance).filter(Attendance.service_id.in_(service_ids)).count()
+
+
+def _children_at_service(db: Session, service_date: date) -> set:
+    service_ids = _service_ids_in_range(db, service_date, service_date)
+    if not service_ids:
+        return set()
+    return {
+        row[0]
+        for row in db.query(Attendance.child_id)
+        .filter(Attendance.service_id.in_(service_ids))
+        .distinct()
+        .all()
+    }
+
+
 def _recent_service_dates(db: Session, up_to: date, count: int = 2) -> list[date]:
     rows = (
         db.query(Service.service_date)
@@ -131,15 +165,17 @@ def get_children_absent_two_services(db: Session, target_date: date) -> list[dic
 
 
 def _retention_metrics(db: Session, period: str, start: date, end: date) -> dict:
+    empty = {
+        "returning_count": 0,
+        "first_check_in_ever_count": 0,
+        "retention_rate_pct": None,
+        "period_attendance_total": 0,
+        "unique_children_present": 0,
+        "retention_note": None,
+    }
     service_ids = _service_ids_in_range(db, start, end)
     if not service_ids:
-        return {
-            "returning_count": 0,
-            "first_time_visitors": 0,
-            "retention_rate_pct": 0.0,
-            "period_attendance_total": 0,
-            "unique_children_present": 0,
-        }
+        return empty
 
     period_child_ids = {
         row[0]
@@ -149,38 +185,69 @@ def _retention_metrics(db: Session, period: str, start: date, end: date) -> dict
         .all()
     }
 
-    first_time = 0
-    returning = 0
-    for child_id in period_child_ids:
-        has_prior = (
-            db.query(Attendance.id)
-            .join(Service)
-            .filter(
-                Attendance.child_id == child_id,
-                Service.service_date < start,
-            )
-            .first()
-        )
-        if has_prior:
-            returning += 1
-        else:
-            first_time += 1
+    if period == "daily":
+        prev_date = _previous_service_date(db, start)
+        returning = 0
+        first_check_in_ever = 0
+        retention_rate = None
+        retention_note = None
 
-    retention_rate = 0.0
-    if period in ("monthly", "quarterly", "yearly"):
-        prev_start, prev_end = _previous_period_range(period, start, end)
-        prev_service_ids = _service_ids_in_range(db, prev_start, prev_end)
-        if prev_service_ids:
-            prev_children = {
-                row[0]
-                for row in db.query(Attendance.child_id)
-                .filter(Attendance.service_id.in_(prev_service_ids))
-                .distinct()
-                .all()
-            }
+        if prev_date:
+            prev_children = _children_at_service(db, prev_date)
+            returning = len(period_child_ids & prev_children)
             if prev_children:
-                retained = len(prev_children & period_child_ids)
-                retention_rate = round(retained / len(prev_children) * 100, 1)
+                retention_rate = round(returning / len(prev_children) * 100, 1)
+            retention_note = f"Compared to previous service on {prev_date.strftime('%b %d, %Y')}"
+        else:
+            retention_note = "No prior service to compare against"
+
+        for child_id in period_child_ids:
+            has_prior = (
+                db.query(Attendance.id)
+                .join(Service)
+                .filter(
+                    Attendance.child_id == child_id,
+                    Service.service_date < start,
+                )
+                .first()
+            )
+            if not has_prior:
+                first_check_in_ever += 1
+    else:
+        first_check_in_ever = 0
+        returning = 0
+        for child_id in period_child_ids:
+            has_prior = (
+                db.query(Attendance.id)
+                .join(Service)
+                .filter(
+                    Attendance.child_id == child_id,
+                    Service.service_date < start,
+                )
+                .first()
+            )
+            if has_prior:
+                returning += 1
+            else:
+                first_check_in_ever += 1
+
+        retention_rate = None
+        retention_note = None
+        if period in ("monthly", "quarterly", "yearly"):
+            prev_start, prev_end = _previous_period_range(period, start, end)
+            prev_service_ids = _service_ids_in_range(db, prev_start, prev_end)
+            if prev_service_ids:
+                prev_children = {
+                    row[0]
+                    for row in db.query(Attendance.child_id)
+                    .filter(Attendance.service_id.in_(prev_service_ids))
+                    .distinct()
+                    .all()
+                }
+                if prev_children:
+                    retained = len(prev_children & period_child_ids)
+                    retention_rate = round(retained / len(prev_children) * 100, 1)
+                    retention_note = f"Compared to previous {period} period"
 
     total_attendance = (
         db.query(Attendance).filter(Attendance.service_id.in_(service_ids)).count()
@@ -188,10 +255,11 @@ def _retention_metrics(db: Session, period: str, start: date, end: date) -> dict
 
     return {
         "returning_count": returning,
-        "first_time_visitors": first_time,
+        "first_check_in_ever_count": first_check_in_ever,
         "retention_rate_pct": retention_rate,
         "period_attendance_total": total_attendance,
         "unique_children_present": len(period_child_ids),
+        "retention_note": retention_note,
     }
 
 
@@ -260,17 +328,57 @@ def _workers_on_duty(db: Session, service_ids: list) -> list[dict]:
     ]
 
 
-def _attendance_growth_pct(
+def _attendance_growth(
     db: Session, period: str, start: date, end: date, current_count: int
-) -> float | None:
-    prev_start, prev_end = _previous_period_range(period, start, end)
-    prev_ids = _service_ids_in_range(db, prev_start, prev_end)
-    if not prev_ids:
-        return None
-    prev_count = db.query(Attendance).filter(Attendance.service_id.in_(prev_ids)).count()
-    if prev_count == 0:
-        return None
-    return round((current_count - prev_count) / prev_count * 100, 1)
+) -> dict:
+    """Compare attendance to a sensible baseline; omit pct when baseline is too small."""
+    if period == "daily":
+        prev_date = _previous_service_date(db, start)
+        if not prev_date:
+            return {
+                "attendance_growth_pct": None,
+                "attendance_growth_vs": None,
+                "attendance_growth_note": "No previous service to compare",
+            }
+        prev_count = _attendance_count_for_dates(db, prev_date, prev_date)
+        vs_label = f"previous service ({prev_date.strftime('%b %d, %Y')})"
+    else:
+        prev_start, prev_end = _previous_period_range(period, start, end)
+        prev_count = _attendance_count_for_dates(db, prev_start, prev_end)
+        if not prev_count:
+            return {
+                "attendance_growth_pct": None,
+                "attendance_growth_vs": None,
+                "attendance_growth_note": "No attendance data for previous period",
+            }
+        vs_label = f"previous {period} period"
+
+    if prev_count < MIN_GROWTH_BASELINE:
+        return {
+            "attendance_growth_pct": None,
+            "attendance_growth_vs": vs_label,
+            "attendance_growth_note": (
+                f"Growth not shown: baseline had only {prev_count} check-ins "
+                f"(minimum {MIN_GROWTH_BASELINE} required)"
+            ),
+        }
+
+    growth = round((current_count - prev_count) / prev_count * 100, 1)
+    if abs(growth) > 500:
+        return {
+            "attendance_growth_pct": None,
+            "attendance_growth_vs": vs_label,
+            "attendance_growth_note": (
+                f"Growth not shown: change from {prev_count} to {current_count} "
+                f"check-ins is too large for a meaningful percentage"
+            ),
+        }
+
+    return {
+        "attendance_growth_pct": growth,
+        "attendance_growth_vs": vs_label,
+        "attendance_growth_note": None,
+    }
 
 
 def build_executive_metrics(
@@ -317,7 +425,7 @@ def build_executive_metrics(
     if children_present > 0 and workers_present > 0:
         worker_ratio = round(children_present / workers_present, 1)
 
-    growth = _attendance_growth_pct(
+    growth = _attendance_growth(
         db, period, start, end, retention["period_attendance_total"]
     )
 
@@ -336,7 +444,9 @@ def build_executive_metrics(
             "check_in_rate_pct": check_in_rate,
             "check_out_completion_pct": checkout_rate,
             "currently_checked_in": stats["currently_checked_in"] if period == "daily" else None,
-            "attendance_growth_pct": growth,
+            "attendance_growth_pct": growth["attendance_growth_pct"],
+            "attendance_growth_vs": growth["attendance_growth_vs"],
+            "attendance_growth_note": growth["attendance_growth_note"],
             "worker_to_child_ratio": worker_ratio,
         },
         "retention": retention,
@@ -354,16 +464,45 @@ def build_executive_metrics(
 
 def metrics_for_ai(metrics: dict) -> dict:
     """Strip PII before sending to an external LLM."""
+    retention = metrics["retention"]
+    kpis = metrics["kpis"]
+    period = metrics["report_period"]
+
+    returning_label = (
+        "returned_from_previous_service"
+        if period == "daily"
+        else "returning_children_with_prior_attendance"
+    )
+
     return {
-        "report_period": metrics["report_period"],
+        "report_period": period,
         "period_label": metrics["period_label"],
         "service_name": metrics["service_name"],
-        "kpis": metrics["kpis"],
+        "metric_definitions": {
+            "registered_children": "Total active children in the database (not event registration)",
+            "children_present": "Children checked in during this period",
+            "check_in_rate_pct": "children_present / registered_children",
+            returning_label: retention["returning_count"],
+            "first_check_in_ever_count": (
+                "Children whose very first check-in ever was during this period "
+                "(NOT the same as first-time church visitors)"
+            ),
+            "retention_rate_pct": (
+                retention["retention_note"]
+                or "Percentage of previous-period attendees who also attended this period"
+            ),
+            "attendance_growth_pct": (
+                "Only present when baseline is reliable; otherwise see attendance_growth_note"
+            ),
+        },
+        "kpis": kpis,
         "retention": {
-            "returning_count": metrics["retention"]["returning_count"],
-            "first_time_visitors": metrics["retention"]["first_time_visitors"],
-            "retention_rate_pct": metrics["retention"]["retention_rate_pct"],
-            "unique_children_present": metrics["retention"]["unique_children_present"],
+            "returning_count": retention["returning_count"],
+            "returning_label": returning_label,
+            "first_check_in_ever_count": retention["first_check_in_ever_count"],
+            "retention_rate_pct": retention["retention_rate_pct"],
+            "retention_note": retention["retention_note"],
+            "unique_children_present": retention["unique_children_present"],
         },
         "class_breakdown": metrics["class_breakdown"],
         "absent_two_services_count": metrics["absent_two_services_count"],

@@ -49,11 +49,13 @@ def _kpi_table(kpis: dict[str, Any]) -> Table:
     if kpis.get("check_out_completion_pct") is not None:
         rows.append(["Check-out Completion", f"{kpis['check_out_completion_pct']}%"])
     if kpis.get("attendance_growth_pct") is not None:
-        rows.append(["Attendance Growth", f"{kpis['attendance_growth_pct']}%"])
+        vs = kpis.get("attendance_growth_vs", "")
+        rows.append(["Attendance Growth", f"{kpis['attendance_growth_pct']}% vs {vs}"])
+    elif kpis.get("attendance_growth_note"):
+        rows.append(["Attendance Growth", kpis["attendance_growth_note"]])
     if kpis.get("worker_to_child_ratio") is not None:
         rows.append(["Children per Worker", str(kpis["worker_to_child_ratio"])])
 
-    retention_rate = kpis.get("retention_rate_pct")
     table = Table(rows, colWidths=[3.5 * inch, 2 * inch])
     table.setStyle(
         TableStyle(
@@ -126,12 +128,22 @@ def generate_executive_report_pdf(
     ]
 
     retention = metrics["retention"]
+    is_daily = metrics["report_period"] == "daily"
+    returning_label = (
+        "Returned From Previous Service" if is_daily else "Returning Children"
+    )
     retention_rows = [
-        ["Returning Children", str(retention["returning_count"])],
-        ["First-time Visitors", str(retention["first_time_visitors"])],
-        ["Retention Rate", f"{retention['retention_rate_pct']}%"],
+        [returning_label, str(retention["returning_count"])],
+        ["First Check-in Ever (System)", str(retention["first_check_in_ever_count"])],
         ["Unique Children Present", str(retention["unique_children_present"])],
     ]
+    if retention["retention_rate_pct"] is not None:
+        note = retention.get("retention_note") or ""
+        retention_rows.append(
+            ["Retention Rate", f"{retention['retention_rate_pct']}% ({note})"]
+        )
+    elif retention.get("retention_note"):
+        retention_rows.append(["Retention Note", retention["retention_note"]])
     ret_table = Table(retention_rows, colWidths=[3.5 * inch, 2 * inch])
     ret_table.setStyle(
         TableStyle(
