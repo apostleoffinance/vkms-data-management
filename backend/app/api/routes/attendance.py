@@ -9,6 +9,7 @@ from app.core.deps import DbSession, VerifiedUser
 from app.models.attendance import Attendance
 from app.models.child import Child
 from app.models.parent import Parent
+from app.models.service import Service
 from app.schemas.attendance import (
     AttendanceResponse,
     CheckInRequest,
@@ -31,13 +32,21 @@ def _attendance_query(db: DbSession):
 
 def _resolve_service(db: DbSession, service_id: str | None):
     if service_id:
-        from app.models.service import Service
-
         service = db.query(Service).filter(Service.id == uuid.UUID(service_id)).first()
         if not service:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Service not found")
         return service
     return get_or_create_today_service(db)
+
+
+def _child_attendance_on_date(db: DbSession, child_id: uuid.UUID, service_date) -> Attendance | None:
+    """One check-in per child per service date, regardless of service record id."""
+    return (
+        db.query(Attendance)
+        .join(Service)
+        .filter(Attendance.child_id == child_id, Service.service_date == service_date)
+        .first()
+    )
 
 
 def _attendance_response(record: Attendance) -> AttendanceResponse:
@@ -108,8 +117,9 @@ def search_checked_in(
         _attendance_query(db)
         .join(Child)
         .join(Parent)
+        .join(Service)
         .filter(
-            Attendance.service_id == service.id,
+            Service.service_date == service.service_date,
             Attendance.checked_out.is_(False),
             or_(*filters),
         )
@@ -131,7 +141,11 @@ def get_by_tag(
 
     record = (
         _attendance_query(db)
-        .filter(Attendance.tag_number == tag_number.zfill(3), Attendance.service_id == service.id)
+        .join(Service)
+        .filter(
+            Attendance.tag_number == tag_number.zfill(3),
+            Service.service_date == service.service_date,
+        )
         .first()
     )
     if not record:
@@ -155,23 +169,19 @@ def check_in(body: CheckInRequest, db: DbSession, current_user: VerifiedUser) ->
     else:
         service = get_or_create_today_service(db)
 
-    existing = (
-        db.query(Attendance)
-        .filter(Attendance.child_id == child.id, Attendance.service_id == service.id)
-        .first()
-    )
+    existing = _child_attendance_on_date(db, child.id, service.service_date)
     if existing:
         if existing.checked_out:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Child already checked out for this service (tag {existing.tag_number})",
+                detail=(
+                    f"{child.full_name} has already checked in and out for this service "
+                    f"(tag {existing.tag_number})"
+                ),
             )
-        return TagPrintResponse(
-            tag_number=existing.tag_number,
-            child_name=child.full_name,
-            class_name=child.class_.name,
-            check_in_time=existing.check_in_time,
-            child_code=child.child_code,
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"{child.full_name} is already checked in (tag {existing.tag_number})",
         )
 
     tag_number = get_next_tag_number(db, service.id)
@@ -211,9 +221,10 @@ def check_out(body: CheckOutRequest, db: DbSession, current_user: VerifiedUser) 
 
     record = (
         _attendance_query(db)
+        .join(Service)
         .filter(
             Attendance.tag_number == body.tag_number.zfill(3),
-            Attendance.service_id == service.id,
+            Service.service_date == service.service_date,
         )
         .first()
     )
@@ -221,7 +232,10 @@ def check_out(body: CheckOutRequest, db: DbSession, current_user: VerifiedUser) 
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tag not found")
 
     if record.checked_out:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Child already checked out")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"{record.child.full_name} has already been checked out for this service",
+        )
 
     record.checked_out = True
     record.check_out_time = datetime.now(UTC)

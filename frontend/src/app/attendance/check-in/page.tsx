@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { EmptyState, PageLoader } from "@/components/ui/loading";
-import { apiGet, apiPost } from "@/lib/api";
+import { apiGet, apiPost, ApiError } from "@/lib/api";
 import type { ChildDetail, ChildSearchResult, TagPrint } from "@/types";
 
 export default function CheckInPage() {
@@ -78,7 +78,16 @@ function CheckInContent() {
       setTag(result);
       toast.success(`Checked in with tag ${result.tag_number}`);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Check-in failed");
+      const message = err instanceof Error ? err.message : "Check-in failed";
+      if (
+        err instanceof ApiError &&
+        err.status === 400 &&
+        message.toLowerCase().includes("already")
+      ) {
+        toast.warning(message);
+      } else {
+        toast.error(message);
+      }
     } finally {
       setCheckingIn(null);
     }
