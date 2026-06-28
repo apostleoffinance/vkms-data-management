@@ -82,13 +82,24 @@ body {
     visibility: hidden;
   }
   #printable-tag,
-  #printable-tag * {
+  #printable-tag *,
+  #executive-report,
+  #executive-report * {
     visibility: visible;
   }
-  #printable-tag {
+  #printable-tag,
+  #executive-report {
     position: absolute;
     left: 0;
     top: 0;
     width: 100%;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .executive-report-document {
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
   }
 }

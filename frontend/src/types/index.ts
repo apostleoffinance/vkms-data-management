@@ -133,6 +133,77 @@ export interface DashboardCharts {
   new_registrations_trend: ChartDataPoint[];
 }
 
+export interface ExecutiveSummary {
+  executive_summary: string;
+  key_insights: string[];
+  recommendations: string[];
+}
+
+export interface ExecutiveKpis {
+  registered_children: number;
+  children_present: number;
+  workers_present: number;
+  new_registrations_this_month: number;
+  average_weekly_attendance: number;
+  check_in_rate_pct: number;
+  check_out_completion_pct: number | null;
+  currently_checked_in: number | null;
+  attendance_growth_pct: number | null;
+  attendance_growth_vs: string | null;
+  attendance_growth_note: string | null;
+  worker_to_child_ratio: number | null;
+}
+
+export interface ExecutiveRetention {
+  returning_count: number;
+  first_check_in_ever_count: number;
+  unique_children_present: number;
+  retention_rate_pct: number | null;
+  retention_note: string | null;
+}
+
+export interface ExecutiveClassBreakdown {
+  class_name: string;
+  present: number;
+  registered: number;
+}
+
+export interface ExecutiveWorkerOnDuty {
+  worker_name: string;
+  check_in: string;
+  service_date: string;
+}
+
+export interface ExecutiveAbsentChild {
+  child_name: string;
+  class_name: string;
+  parent_name: string;
+  phone: string;
+  last_attendance: string;
+}
+
+export interface ExecutiveMetrics {
+  report_period: string;
+  period_label: string;
+  service_name: string;
+  kpis: ExecutiveKpis;
+  retention: ExecutiveRetention;
+  class_breakdown: ExecutiveClassBreakdown[];
+  workers_on_duty: ExecutiveWorkerOnDuty[];
+  absent_two_services: ExecutiveAbsentChild[];
+  absent_two_services_count: number;
+  charts: {
+    attendance_trend: ChartDataPoint[];
+    class_distribution: ChartDataPoint[];
+    worker_trend: ChartDataPoint[];
+  };
+}
+
+export interface ExecutiveReportData {
+  metrics: ExecutiveMetrics;
+  summary: ExecutiveSummary;
+}
+
 export interface WorkerRosterItem {
   id: string;
   first_name: string;

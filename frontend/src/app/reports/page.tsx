@@ -2,9 +2,13 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Download, FileText, Sparkles } from "lucide-react";
+import { Download, FileText, Printer, Sparkles } from "lucide-react";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
+import {
+  ExecutiveReportView,
+  printExecutiveReport,
+} from "@/components/reports/executive-report-view";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -18,28 +22,7 @@ import {
 } from "@/components/ui/select";
 import { apiDownload, apiGet } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
-
-interface ExecutiveSummary {
-  executive_summary: string;
-  key_insights: string[];
-  recommendations: string[];
-}
-
-interface ExecutivePreview {
-  metrics: {
-    period_label: string;
-    service_name: string;
-    kpis: {
-      registered_children: number;
-      children_present: number;
-      workers_present: number;
-      check_in_rate_pct: number;
-    };
-    absent_two_services_count: number;
-    workers_on_duty: { worker_name: string; check_in: string }[];
-  };
-  summary: ExecutiveSummary;
-}
+import type { ExecutiveReportData } from "@/types";
 
 export default function ReportsPage() {
   const { user } = useAuth();
@@ -63,7 +46,7 @@ export default function ReportsPage() {
   const { data: executive, isLoading: execLoading } = useQuery({
     queryKey: ["executive-report", execPeriod, targetDate],
     queryFn: () =>
-      apiGet<ExecutivePreview>(
+      apiGet<ExecutiveReportData>(
         `/api/v1/reports/executive?period=${execPeriod}${execDateParam}`,
       ),
     enabled: user?.role === "admin",
@@ -83,7 +66,7 @@ export default function ReportsPage() {
     await apiDownload(`/api/v1/reports/export?${params.toString()}`, `vkms-${report}.${ext}`);
   };
 
-  const handleExecutiveExport = async () => {
+  const handleExecutiveServerPdf = async () => {
     const params = new URLSearchParams({ period: execPeriod });
     if (targetDate) params.set("target_date", targetDate);
     const label = targetDate || new Date().toISOString().slice(0, 10);
@@ -96,91 +79,66 @@ export default function ReportsPage() {
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        <h1 className="text-3xl font-bold">Reports</h1>
+        <h1 className="text-3xl font-bold no-print">Reports</h1>
 
-        <Card className="border-amber-200 bg-amber-50/30">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-amber-600" />
-              Executive Report
-            </CardTitle>
-            <CardDescription>
-              AI-powered ministry summary with KPIs, retention metrics, worker attendance,
-              and follow-up list for children absent 2+ services.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex flex-wrap gap-4 items-end">
-              <div className="space-y-1">
-                <Label htmlFor="exec-period">Period</Label>
-                <Select value={execPeriod} onValueChange={setExecPeriod}>
-                  <SelectTrigger id="exec-period" className="w-40">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="daily">Today / Daily</SelectItem>
-                    <SelectItem value="weekly">Weekly</SelectItem>
-                    <SelectItem value="monthly">Monthly</SelectItem>
-                    <SelectItem value="quarterly">Quarterly</SelectItem>
-                    <SelectItem value="yearly">Yearly</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="target-date">Target date</Label>
-                <Input
-                  id="target-date"
-                  type="date"
-                  className="w-44"
-                  value={targetDate}
-                  onChange={(e) => setTargetDate(e.target.value)}
-                />
-              </div>
-              <Button onClick={handleExecutiveExport}>
-                <FileText className="h-4 w-4 mr-2" />
-                Download PDF
-              </Button>
-            </div>
-
-            {execLoading ? (
-              <p className="text-sm text-muted-foreground">Generating preview...</p>
-            ) : executive ? (
-              <div className="space-y-3 rounded-lg border bg-white p-4 text-sm">
-                <div className="flex flex-wrap gap-4 text-muted-foreground">
-                  <span>{executive.metrics.period_label}</span>
-                  <span>{executive.metrics.service_name}</span>
+        <div className="space-y-4 no-print">
+          <Card className="border-amber-200 bg-amber-50/30">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-amber-600" />
+                Executive Report
+              </CardTitle>
+              <CardDescription>
+                AI-powered ministry summary with KPIs, retention metrics, charts, worker attendance,
+                and follow-up list for children absent 2+ services.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap gap-4 items-end">
+                <div className="space-y-1">
+                  <Label htmlFor="exec-period">Period</Label>
+                  <Select value={execPeriod} onValueChange={setExecPeriod}>
+                    <SelectTrigger id="exec-period" className="w-40">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="daily">Today / Daily</SelectItem>
+                      <SelectItem value="weekly">Weekly</SelectItem>
+                      <SelectItem value="monthly">Monthly</SelectItem>
+                      <SelectItem value="quarterly">Quarterly</SelectItem>
+                      <SelectItem value="yearly">Yearly</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <div className="rounded-md bg-white border p-3">
-                    <p className="text-xs text-muted-foreground">Present</p>
-                    <p className="text-xl font-bold">{executive.metrics.kpis.children_present}</p>
-                  </div>
-                  <div className="rounded-md bg-white border p-3">
-                    <p className="text-xs text-muted-foreground">Workers</p>
-                    <p className="text-xl font-bold">{executive.metrics.kpis.workers_present}</p>
-                  </div>
-                  <div className="rounded-md bg-white border p-3">
-                    <p className="text-xs text-muted-foreground">Check-in rate</p>
-                    <p className="text-xl font-bold">{executive.metrics.kpis.check_in_rate_pct}%</p>
-                  </div>
-                  <div className="rounded-md bg-white border p-3">
-                    <p className="text-xs text-muted-foreground">Absent 2+ services</p>
-                    <p className="text-xl font-bold">{executive.metrics.absent_two_services_count}</p>
-                  </div>
+                <div className="space-y-1">
+                  <Label htmlFor="target-date">Target date</Label>
+                  <Input
+                    id="target-date"
+                    type="date"
+                    className="w-44"
+                    value={targetDate}
+                    onChange={(e) => setTargetDate(e.target.value)}
+                  />
                 </div>
-                <p className="leading-relaxed">{executive.summary.executive_summary}</p>
-                {executive.metrics.workers_on_duty.length > 0 && (
-                  <p className="text-muted-foreground">
-                    Workers on duty:{" "}
-                    {executive.metrics.workers_on_duty.map((w) => w.worker_name).join(", ")}
-                  </p>
-                )}
+                <Button onClick={printExecutiveReport} disabled={!executive}>
+                  <Printer className="h-4 w-4 mr-2" />
+                  Print / Save PDF
+                </Button>
+                <Button variant="outline" onClick={handleExecutiveServerPdf} disabled={!executive}>
+                  <FileText className="h-4 w-4 mr-2" />
+                  Basic PDF
+                </Button>
               </div>
-            ) : null}
-          </CardContent>
-        </Card>
+              {execLoading ? (
+                <p className="mt-4 text-sm text-muted-foreground">Generating report...</p>
+              ) : null}
+            </CardContent>
+          </Card>
+        </div>
 
-        <Card>
+        {!execLoading && executive ? <ExecutiveReportView data={executive} /> : null}
+
+        <Card className="no-print">
           <CardHeader>
             <CardTitle>Generate Report</CardTitle>
           </CardHeader>
@@ -222,7 +180,7 @@ export default function ReportsPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="no-print">
           <CardHeader>
             <CardTitle>Report Data</CardTitle>
           </CardHeader>
