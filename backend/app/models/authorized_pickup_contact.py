@@ -3,7 +3,7 @@ from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, LargeBinary, String, func
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship as orm_relationship
 
 from app.database import Base
 
@@ -27,7 +27,7 @@ class AuthorizedPickupContact(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
-    child = relationship("Child", back_populates="authorized_pickup_contacts")
+    child = orm_relationship("Child", back_populates="authorized_pickup_contacts")
 
     @property
     def full_name(self) -> str:
