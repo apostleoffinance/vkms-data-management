@@ -20,12 +20,14 @@ class ServiceResponse(BaseModel):
 class CheckInRequest(BaseModel):
     child_id: str
     service_id: str | None = None
+    dropped_off_contact_id: str
     notes: str | None = None
 
 
 class CheckOutRequest(BaseModel):
     tag_number: str = Field(min_length=1, max_length=10)
     service_id: str | None = None
+    picked_up_contact_id: str
 
 
 class AttendanceResponse(BaseModel):
@@ -43,6 +45,10 @@ class AttendanceResponse(BaseModel):
     check_out_time: datetime | None
     checked_out: bool
     checked_out_by_name: str | None
+    dropped_off_contact_id: str | None = None
+    dropped_off_contact_name: str | None = None
+    picked_up_contact_id: str | None = None
+    picked_up_contact_name: str | None = None
     notes: str | None
 
 

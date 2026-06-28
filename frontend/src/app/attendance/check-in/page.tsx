@@ -8,13 +8,22 @@ import { toast } from "sonner";
 import { QRCodeSVG } from "qrcode.react";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
+import { AuthorizedPickupPhoto } from "@/components/pickup/authorized-pickup-photo";
 import { ServiceSelector, useDefaultServiceId } from "@/components/services/service-selector";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { EmptyState, PageLoader } from "@/components/ui/loading";
 import { apiGet, apiPost, ApiError } from "@/lib/api";
-import type { ChildDetail, ChildSearchResult, TagPrint } from "@/types";
+import type { AuthorizedPickupContact, ChildDetail, ChildSearchResult, TagPrint } from "@/types";
 
 export default function CheckInPage() {
   return (
@@ -38,6 +47,8 @@ function CheckInContent() {
   const [tag, setTag] = useState<TagPrint | null>(null);
   const [checkingIn, setCheckingIn] = useState<string | null>(null);
   const [serviceId, setServiceId] = useState("");
+  const [pendingChild, setPendingChild] = useState<ChildSearchResult | null>(null);
+  const [droppedOffContactId, setDroppedOffContactId] = useState("");
   const defaultServiceId = useDefaultServiceId();
 
   useEffect(() => {
@@ -64,26 +75,48 @@ function CheckInContent() {
     enabled: query.length >= 2,
   });
 
-  const handleCheckIn = async (childId: string) => {
-    if (!serviceId) {
+  const pendingChildId = pendingChild?.id ?? "";
+  const { data: pickupContacts = [] } = useQuery({
+    queryKey: ["authorized-pickups", pendingChildId],
+    queryFn: () => apiGet<AuthorizedPickupContact[]>(`/api/v1/authorized-pickups/children/${pendingChildId}`),
+    enabled: !!pendingChildId,
+  });
+
+  useEffect(() => {
+    if (pickupContacts.length > 0 && !droppedOffContactId) {
+      const primary = pickupContacts.find((c) => c.is_primary) ?? pickupContacts[0];
+      setDroppedOffContactId(primary.id);
+    }
+  }, [pickupContacts, droppedOffContactId]);
+
+  const startCheckIn = (child: ChildSearchResult) => {
+    setPendingChild(child);
+    setDroppedOffContactId("");
+    setTag(null);
+  };
+
+  const handleCheckIn = async () => {
+    if (!pendingChild || !serviceId) {
       toast.error("Please select a service");
       return;
     }
-    setCheckingIn(childId);
+    if (!droppedOffContactId) {
+      toast.error("Select who dropped off the child");
+      return;
+    }
+    setCheckingIn(pendingChild.id);
     try {
       const result = await apiPost<TagPrint>("/api/v1/attendance/check-in", {
-        child_id: childId,
+        child_id: pendingChild.id,
         service_id: serviceId,
+        dropped_off_contact_id: droppedOffContactId,
       });
       setTag(result);
+      setPendingChild(null);
       toast.success(`Checked in with tag ${result.tag_number}`);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Check-in failed";
-      if (
-        err instanceof ApiError &&
-        err.status === 400 &&
-        message.toLowerCase().includes("already")
-      ) {
+      if (err instanceof ApiError && err.status === 400 && message.toLowerCase().includes("already")) {
         toast.warning(message);
       } else {
         toast.error(message);
@@ -98,34 +131,39 @@ function CheckInContent() {
     if (code.startsWith("VK-")) {
       try {
         const child = await apiGet<ChildSearchResult>(`/api/v1/children/qr/${code}`);
-        await handleCheckIn(child.id);
+        startCheckIn(child);
       } catch {
         toast.error("QR code not found");
       }
     }
   };
 
+  const childRow = (child: ChildSearchResult, highlight = false) => (
+    <div
+      key={child.id}
+      className={`flex items-center justify-between rounded-lg border p-4 ${
+        highlight ? "border-primary/30 bg-primary/5" : "hover:bg-accent/50"
+      }`}
+    >
+      <div>
+        <p className="font-medium">{child.first_name} {child.last_name}</p>
+        <p className="text-sm text-muted-foreground">
+          {child.child_code} · {child.class_name} · {child.parent_name} ({child.parent_phone})
+        </p>
+      </div>
+      <Button onClick={() => startCheckIn(child)} disabled={checkingIn === child.id}>
+        Check In
+      </Button>
+    </div>
+  );
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
         <h1 className="text-3xl font-bold">Check In</h1>
         <p className="text-muted-foreground">
-          Service tags are assigned here in check-in order for the selected service.
+          Record who dropped off the child, then assign a service tag.
         </p>
-
-        {preselectedChild && (
-          <Card className="border-primary/30 bg-primary/5">
-            <CardContent className="p-4">
-              <p className="text-sm text-muted-foreground">Newly registered child</p>
-              <p className="font-medium">
-                {preselectedChild.first_name} {preselectedChild.last_name} ({preselectedChild.child_code})
-              </p>
-              <p className="text-sm text-muted-foreground mt-1">
-                Select today&apos;s service and check in to receive a tag number.
-              </p>
-            </CardContent>
-          </Card>
-        )}
 
         <Card>
           <CardHeader>
@@ -154,46 +192,84 @@ function CheckInContent() {
             )}
 
             <div className="space-y-2">
-              {preselectedChild && !results.some((child) => child.id === preselectedChild.id) && (
-                <div className="flex items-center justify-between rounded-lg border border-primary/30 bg-primary/5 p-4">
-                  <div>
-                    <p className="font-medium">
-                      {preselectedChild.first_name} {preselectedChild.last_name}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {preselectedChild.child_code} · {preselectedChild.class_name}
-                    </p>
-                  </div>
-                  <Button
-                    onClick={() => handleCheckIn(preselectedChild.id)}
-                    disabled={checkingIn === preselectedChild.id}
-                  >
-                    {checkingIn === preselectedChild.id ? "Checking in..." : "Check In"}
-                  </Button>
-                </div>
-              )}
-              {results.map((child) => (
-                <div
-                  key={child.id}
-                  className="flex items-center justify-between rounded-lg border p-4 hover:bg-accent/50"
-                >
-                  <div>
-                    <p className="font-medium">{child.first_name} {child.last_name}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {child.child_code} · {child.class_name} · {child.parent_name} ({child.parent_phone})
-                    </p>
-                  </div>
-                  <Button
-                    onClick={() => handleCheckIn(child.id)}
-                    disabled={checkingIn === child.id}
-                  >
-                    {checkingIn === child.id ? "Checking in..." : "Check In"}
-                  </Button>
-                </div>
-              ))}
+              {preselectedChild && !results.some((child) => child.id === preselectedChild.id) &&
+                childRow(
+                  {
+                    id: preselectedChild.id,
+                    child_code: preselectedChild.child_code,
+                    first_name: preselectedChild.first_name,
+                    last_name: preselectedChild.last_name,
+                    class_name: preselectedChild.class_name,
+                    parent_name: `${preselectedChild.parent.first_name} ${preselectedChild.parent.last_name}`,
+                    parent_phone: preselectedChild.parent.phone,
+                    is_active: preselectedChild.is_active,
+                  },
+                  true,
+                )}
+              {results.map((child) => childRow(child))}
             </div>
           </CardContent>
         </Card>
+
+        {pendingChild && (
+          <Card className="border-primary/40">
+            <CardHeader>
+              <CardTitle>Who dropped off {pendingChild.first_name}?</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {pickupContacts.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Loading authorized contacts...</p>
+              ) : (
+                <>
+                  <div className="space-y-2">
+                    <Label>Authorized drop-off person</Label>
+                    <Select value={droppedOffContactId} onValueChange={setDroppedOffContactId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select person" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {pickupContacts.map((contact) => (
+                          <SelectItem key={contact.id} value={contact.id}>
+                            {contact.full_name} ({contact.relationship})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {droppedOffContactId && (
+                    <div className="flex items-center gap-4 rounded-lg border p-4 bg-muted/30">
+                      {(() => {
+                        const selected = pickupContacts.find((c) => c.id === droppedOffContactId);
+                        if (!selected) return null;
+                        return (
+                          <>
+                            <AuthorizedPickupPhoto contactId={selected.id} name={selected.full_name} />
+                            <div>
+                              <p className="font-medium">{selected.full_name}</p>
+                              <p className="text-sm text-muted-foreground">{selected.relationship}</p>
+                              <p className="text-sm text-muted-foreground">{selected.phone}</p>
+                              {!selected.has_photo && (
+                                <p className="text-xs text-amber-600 mt-1">No photo on file — verify ID manually</p>
+                              )}
+                            </div>
+                          </>
+                        );
+                      })()}
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <Button onClick={handleCheckIn} disabled={!!checkingIn}>
+                      {checkingIn ? "Checking in..." : "Confirm check-in"}
+                    </Button>
+                    <Button variant="outline" onClick={() => setPendingChild(null)}>
+                      Cancel
+                    </Button>
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {tag && (
           <Card className="border-2 border-primary print:border-black" id="printable-tag">

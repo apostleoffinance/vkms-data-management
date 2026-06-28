@@ -77,6 +77,20 @@ export interface TagPrint {
   child_code: string;
 }
 
+export interface AuthorizedPickupContact {
+  id: string;
+  child_id: string;
+  first_name: string;
+  last_name: string;
+  full_name: string;
+  phone: string;
+  relationship: string;
+  is_primary: boolean;
+  has_photo: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface AttendanceRecord {
   id: string;
   child_id: string;
@@ -90,6 +104,10 @@ export interface AttendanceRecord {
   check_out_time: string | null;
   checked_out: boolean;
   checked_out_by_name: string | null;
+  dropped_off_contact_id: string | null;
+  dropped_off_contact_name: string | null;
+  picked_up_contact_id: string | null;
+  picked_up_contact_name: string | null;
   notes: string | null;
 }
 

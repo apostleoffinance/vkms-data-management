@@ -8,6 +8,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { toast } from "sonner";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
+import { AuthorizedPickupManager } from "@/components/pickup/authorized-pickup-manager";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -192,6 +193,8 @@ export default function ChildProfilePage({ params }: { params: Promise<{ id: str
             </div>
           </CardContent>
         </Card>
+
+        <AuthorizedPickupManager childId={id} readOnly={!isAdmin} />
 
         <Card>
           <CardHeader><CardTitle>Attendance History</CardTitle></CardHeader>

@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from app.api.routes import (
     attendance,
     auth,
+    authorized_pickups,
     children,
     classes,
     dashboard,
@@ -23,6 +24,9 @@ api_router.include_router(classes.router, prefix="/classes", tags=["Classes"])
 api_router.include_router(parents.router, prefix="/parents", tags=["Parents"])
 api_router.include_router(services.router, prefix="/services", tags=["Services"])
 api_router.include_router(attendance.router, prefix="/attendance", tags=["Attendance"])
+api_router.include_router(
+    authorized_pickups.router, prefix="/authorized-pickups", tags=["Authorized Pickup"]
+)
 api_router.include_router(workers.router, prefix="/workers", tags=["Workers"])
 api_router.include_router(worker_attendance.router, prefix="/worker-attendance", tags=["Worker Attendance"])
 api_router.include_router(dashboard.router, prefix="/dashboard", tags=["Dashboard"])

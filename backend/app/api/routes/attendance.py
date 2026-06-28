@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import func, or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload
 
 from app.core.deps import DbSession, VerifiedUser
@@ -18,6 +19,7 @@ from app.schemas.attendance import (
 )
 from app.services.audit import log_audit
 from app.services.child_service import get_next_tag_number, get_or_create_today_service
+from app.services.pickup_service import ensure_primary_contact_from_parent, get_contact_for_child
 
 router = APIRouter()
 
@@ -27,6 +29,8 @@ def _attendance_query(db: DbSession):
         joinedload(Attendance.child).joinedload(Child.parent),
         joinedload(Attendance.child).joinedload(Child.class_),
         joinedload(Attendance.checked_out_by_user),
+        joinedload(Attendance.dropped_off_contact),
+        joinedload(Attendance.picked_up_contact),
     )
 
 
@@ -40,11 +44,10 @@ def _resolve_service(db: DbSession, service_id: str | None):
 
 
 def _child_attendance_on_date(db: DbSession, child_id: uuid.UUID, service_date) -> Attendance | None:
-    """One check-in per child per service date, regardless of service record id."""
+    """One check-in per child per service date."""
     return (
         db.query(Attendance)
-        .join(Service)
-        .filter(Attendance.child_id == child_id, Service.service_date == service_date)
+        .filter(Attendance.child_id == child_id, Attendance.service_date == service_date)
         .first()
     )
 
@@ -63,6 +66,10 @@ def _attendance_response(record: Attendance) -> AttendanceResponse:
         check_out_time=record.check_out_time,
         checked_out=record.checked_out,
         checked_out_by_name=record.checked_out_by_user.full_name if record.checked_out_by_user else None,
+        dropped_off_contact_id=str(record.dropped_off_contact_id) if record.dropped_off_contact_id else None,
+        dropped_off_contact_name=record.dropped_off_contact.full_name if record.dropped_off_contact else None,
+        picked_up_contact_id=str(record.picked_up_contact_id) if record.picked_up_contact_id else None,
+        picked_up_contact_name=record.picked_up_contact.full_name if record.picked_up_contact else None,
         notes=record.notes,
     )
 
@@ -74,14 +81,7 @@ def list_attendance(
     service_id: str | None = Query(default=None),
     child_id: str | None = Query(default=None),
 ) -> list[AttendanceResponse]:
-    query = (
-        db.query(Attendance)
-        .options(
-            joinedload(Attendance.child).joinedload(Child.parent),
-            joinedload(Attendance.child).joinedload(Child.class_),
-            joinedload(Attendance.checked_out_by_user),
-        )
-    )
+    query = _attendance_query(db)
     if service_id:
         query = query.filter(Attendance.service_id == uuid.UUID(service_id))
     if child_id:
@@ -184,18 +184,40 @@ def check_in(body: CheckInRequest, db: DbSession, current_user: VerifiedUser) ->
             detail=f"{child.full_name} is already checked in (tag {existing.tag_number})",
         )
 
+    try:
+        dropped_off_contact_id = uuid.UUID(body.dropped_off_contact_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid contact id") from exc
+
+    ensure_primary_contact_from_parent(db, child)
+    dropped_off = get_contact_for_child(db, child.id, dropped_off_contact_id)
+    if not dropped_off:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Selected drop-off person is not authorized for this child",
+        )
+
     tag_number = get_next_tag_number(db, service.id)
     now = datetime.now(UTC)
 
     attendance = Attendance(
         child_id=child.id,
         service_id=service.id,
+        service_date=service.service_date,
         tag_number=tag_number,
         check_in_time=now,
         notes=body.notes,
+        dropped_off_contact_id=dropped_off.id,
     )
     db.add(attendance)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"{child.full_name} already has attendance recorded for this service date",
+        ) from exc
 
     log_audit(
         db,
@@ -203,7 +225,11 @@ def check_in(body: CheckInRequest, db: DbSession, current_user: VerifiedUser) ->
         "attendance",
         user_id=current_user.id,
         resource_id=str(attendance.id),
-        details={"tag_number": tag_number, "child_code": child.child_code},
+        details={
+            "tag_number": tag_number,
+            "child_code": child.child_code,
+            "dropped_off": dropped_off.full_name,
+        },
     )
 
     return TagPrintResponse(
@@ -237,9 +263,22 @@ def check_out(body: CheckOutRequest, db: DbSession, current_user: VerifiedUser) 
             detail=f"{record.child.full_name} has already been checked out for this service",
         )
 
+    try:
+        picked_up_contact_id = uuid.UUID(body.picked_up_contact_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid contact id") from exc
+
+    picked_up = get_contact_for_child(db, record.child_id, picked_up_contact_id)
+    if not picked_up:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Selected pickup person is not authorized for this child",
+        )
+
     record.checked_out = True
     record.check_out_time = datetime.now(UTC)
     record.checked_out_by = current_user.id
+    record.picked_up_contact_id = picked_up.id
     db.commit()
     db.refresh(record)
 
@@ -249,7 +288,7 @@ def check_out(body: CheckOutRequest, db: DbSession, current_user: VerifiedUser) 
         "attendance",
         user_id=current_user.id,
         resource_id=str(record.id),
-        details={"tag_number": record.tag_number},
+        details={"tag_number": record.tag_number, "picked_up": picked_up.full_name},
     )
 
     return _attendance_response(record)

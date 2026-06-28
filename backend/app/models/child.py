@@ -43,6 +43,9 @@ class Child(Base):
     parent = relationship("Parent", back_populates="children")
     class_ = relationship("Class", back_populates="children")
     attendance_records = relationship("Attendance", back_populates="child")
+    authorized_pickup_contacts = relationship(
+        "AuthorizedPickupContact", back_populates="child", cascade="all, delete-orphan"
+    )
 
     @property
     def full_name(self) -> str:

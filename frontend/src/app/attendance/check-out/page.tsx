@@ -6,11 +6,19 @@ import { Search } from "lucide-react";
 import { toast } from "sonner";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
+import { AuthorizedPickupPhoto } from "@/components/pickup/authorized-pickup-photo";
 import { ServiceSelector, useDefaultServiceId } from "@/components/services/service-selector";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { EmptyState } from "@/components/ui/loading";
 import {
   AlertDialog,
@@ -24,7 +32,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { apiGet, apiPost } from "@/lib/api";
 import { formatDateTime } from "@/lib/utils";
-import type { AttendanceRecord } from "@/types";
+import type { AttendanceRecord, AuthorizedPickupContact } from "@/types";
 
 function isTagQuery(value: string): boolean {
   return /^\d+$/.test(value.trim());
@@ -36,6 +44,7 @@ export default function CheckOutPage() {
   const [loading, setLoading] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [serviceId, setServiceId] = useState("");
+  const [pickedUpContactId, setPickedUpContactId] = useState("");
   const defaultServiceId = useDefaultServiceId();
 
   useEffect(() => {
@@ -46,6 +55,7 @@ export default function CheckOutPage() {
 
   useEffect(() => {
     setRecord(null);
+    setPickedUpContactId("");
   }, [query, serviceId]);
 
   const tagSearch = isTagQuery(query);
@@ -59,8 +69,25 @@ export default function CheckOutPage() {
     enabled: query.trim().length >= 2 && !tagSearch && !!serviceId,
   });
 
+  const { data: pickupContacts = [] } = useQuery({
+    queryKey: ["authorized-pickups", record?.child_id],
+    queryFn: () =>
+      apiGet<AuthorizedPickupContact[]>(`/api/v1/authorized-pickups/children/${record!.child_id}`),
+    enabled: !!record?.child_id,
+  });
+
+  useEffect(() => {
+    if (pickupContacts.length > 0 && !pickedUpContactId) {
+      const droppedOff = record?.dropped_off_contact_id;
+      const match = droppedOff ? pickupContacts.find((c) => c.id === droppedOff) : null;
+      const primary = pickupContacts.find((c) => c.is_primary) ?? pickupContacts[0];
+      setPickedUpContactId(match?.id ?? primary.id);
+    }
+  }, [pickupContacts, pickedUpContactId, record?.dropped_off_contact_id]);
+
   const selectRecord = (data: AttendanceRecord) => {
     setRecord(data);
+    setPickedUpContactId("");
     if (data.checked_out) {
       toast.warning("This child has already been checked out");
     }
@@ -104,12 +131,16 @@ export default function CheckOutPage() {
   };
 
   const handleCheckOut = async () => {
-    if (!record) return;
+    if (!record || !pickedUpContactId) {
+      toast.error("Select who is picking up the child");
+      return;
+    }
     setLoading(true);
     try {
       const updated = await apiPost<AttendanceRecord>("/api/v1/attendance/check-out", {
         tag_number: record.tag_number,
         service_id: serviceId,
+        picked_up_contact_id: pickedUpContactId,
       });
       setRecord(updated);
       setQuery("");
@@ -122,12 +153,14 @@ export default function CheckOutPage() {
     }
   };
 
+  const selectedPickup = pickupContacts.find((c) => c.id === pickedUpContactId);
+
   return (
     <DashboardLayout>
       <div className="space-y-6 max-w-2xl">
         <h1 className="text-3xl font-bold">Check Out</h1>
         <p className="text-muted-foreground">
-          Look up a checked-in child by tag number or name for the selected service.
+          Verify the pickup person against their photo before releasing the child.
         </p>
 
         <Card>
@@ -155,11 +188,6 @@ export default function CheckOutPage() {
                   {loading || isFetching ? "Looking up..." : "Lookup"}
                 </Button>
               </div>
-              <p className="text-xs text-muted-foreground">
-                {tagSearch
-                  ? "Searching by tag number."
-                  : "Type at least 2 characters to search by name, code, or parent name."}
-              </p>
             </div>
 
             {!tagSearch && query.trim().length >= 2 && !isFetching && searchResults.length === 0 && (
@@ -179,7 +207,7 @@ export default function CheckOutPage() {
                     <div>
                       <p className="font-medium">{item.child_name}</p>
                       <p className="text-sm text-muted-foreground">
-                        Tag {item.tag_number} · {item.class_name} · {item.parent_name}
+                        Tag {item.tag_number} · {item.class_name}
                       </p>
                     </div>
                     <Button variant={record?.id === item.id ? "default" : "outline"} onClick={() => selectRecord(item)}>
@@ -195,42 +223,69 @@ export default function CheckOutPage() {
         {record && (
           <Card>
             <CardHeader>
-              <CardTitle>Child Details</CardTitle>
+              <CardTitle>{record.child_name}</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="grid grid-cols-2 gap-4">
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
-                  <p className="text-sm text-muted-foreground">Child Name</p>
-                  <p className="font-medium">{record.child_name}</p>
+                  <p className="text-muted-foreground">Tag</p>
+                  <p className="text-2xl font-bold text-secondary">{record.tag_number}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Parent</p>
-                  <p className="font-medium">{record.parent_name}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Class</p>
+                  <p className="text-muted-foreground">Class</p>
                   <p className="font-medium">{record.class_name}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Check-In Time</p>
+                  <p className="text-muted-foreground">Check-In Time</p>
                   <p className="font-medium">{formatDateTime(record.check_in_time)}</p>
                 </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Tag</p>
-                  <p className="font-medium text-2xl text-secondary">{record.tag_number}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Status</p>
-                  <p className={`font-medium ${record.checked_out ? "text-green-600" : "text-amber-600"}`}>
-                    {record.checked_out ? "Checked Out" : "Checked In"}
-                  </p>
-                </div>
+                {record.dropped_off_contact_name && (
+                  <div>
+                    <p className="text-muted-foreground">Dropped off by</p>
+                    <p className="font-medium">{record.dropped_off_contact_name}</p>
+                  </div>
+                )}
               </div>
 
               {!record.checked_out && (
-                <Button className="w-full" onClick={() => setConfirmOpen(true)}>
-                  Release Child
-                </Button>
+                <>
+                  <div className="space-y-2">
+                    <Label>Who is picking up?</Label>
+                    <Select value={pickedUpContactId} onValueChange={setPickedUpContactId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select authorized pickup person" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {pickupContacts.map((contact) => (
+                          <SelectItem key={contact.id} value={contact.id}>
+                            {contact.full_name} ({contact.relationship})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {selectedPickup && (
+                    <div className="rounded-lg border p-4 bg-amber-50/50 space-y-2">
+                      <p className="text-sm font-medium">Verify pickup person</p>
+                      <div className="flex items-center gap-4">
+                        <AuthorizedPickupPhoto contactId={selectedPickup.id} name={selectedPickup.full_name} className="h-24 w-24" />
+                        <div>
+                          <p className="font-semibold text-lg">{selectedPickup.full_name}</p>
+                          <p className="text-sm text-muted-foreground">{selectedPickup.relationship}</p>
+                          <p className="text-sm text-muted-foreground">{selectedPickup.phone}</p>
+                          {!selectedPickup.has_photo && (
+                            <p className="text-xs text-amber-700 mt-1">No photo — verify ID manually</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <Button className="w-full" onClick={() => setConfirmOpen(true)} disabled={!pickedUpContactId}>
+                    Release Child
+                  </Button>
+                </>
               )}
             </CardContent>
           </Card>
@@ -241,7 +296,7 @@ export default function CheckOutPage() {
             <AlertDialogHeader>
               <AlertDialogTitle>Confirm Release</AlertDialogTitle>
               <AlertDialogDescription>
-                Are you sure you want to release {record?.child_name} to {record?.parent_name}?
+                Release {record?.child_name} to {selectedPickup?.full_name} ({selectedPickup?.relationship})?
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>

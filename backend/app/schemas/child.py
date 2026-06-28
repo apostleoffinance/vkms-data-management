@@ -2,6 +2,8 @@ from datetime import date
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
+from app.schemas.authorized_pickup import AuthorizedPickupCreate
+
 
 class ParentBase(BaseModel):
     first_name: str = Field(min_length=1, max_length=100)
@@ -58,6 +60,7 @@ class ChildCreate(BaseModel):
     parent_address: str | None = None
     parent_id: str | None = None
     medical_notes: str | None = None
+    authorized_pickups: list[AuthorizedPickupCreate] | None = None
 
 
 class ChildUpdate(BaseModel):

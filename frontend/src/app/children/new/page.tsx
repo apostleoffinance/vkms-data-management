@@ -9,6 +9,7 @@ import { z } from "zod";
 import { toast } from "sonner";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
+import { PhotoCapture } from "@/components/pickup/photo-capture";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -51,6 +52,14 @@ export default function RegisterChildPage() {
   const [submitting, setSubmitting] = useState(false);
   const [linkedParentId, setLinkedParentId] = useState<string | null>(null);
   const [debouncedPhone, setDebouncedPhone] = useState("");
+  const [primaryPhoto, setPrimaryPhoto] = useState<string | null>(null);
+  const [secondGuardian, setSecondGuardian] = useState({
+    first_name: "",
+    last_name: "",
+    phone: "",
+    relationship: "Guardian",
+    photo: null as string | null,
+  });
 
   const { data: classes = [] } = useQuery({
     queryKey: ["classes"],
@@ -108,6 +117,27 @@ export default function RegisterChildPage() {
   const onSubmit = async (data: FormData) => {
     setSubmitting(true);
     try {
+      const authorized_pickups = [
+        {
+          first_name: data.parent_first_name,
+          last_name: data.parent_last_name,
+          phone: data.parent_phone,
+          relationship: "Parent",
+          is_primary: true,
+          photo_base64: primaryPhoto,
+        },
+      ];
+      if (secondGuardian.first_name && secondGuardian.last_name && secondGuardian.phone) {
+        authorized_pickups.push({
+          first_name: secondGuardian.first_name,
+          last_name: secondGuardian.last_name,
+          phone: secondGuardian.phone,
+          relationship: secondGuardian.relationship,
+          is_primary: false,
+          photo_base64: secondGuardian.photo,
+        });
+      }
+
       const child = await apiPost<{ id: string; child_code: string; parent_linked: boolean }>(
         "/api/v1/children",
         {
@@ -117,6 +147,7 @@ export default function RegisterChildPage() {
           parent_alternative_phone: data.parent_alternative_phone || null,
           parent_address: data.parent_address || null,
           medical_notes: data.medical_notes || null,
+          authorized_pickups,
         },
       );
       toast.success(
@@ -261,6 +292,51 @@ export default function RegisterChildPage() {
               <div className="space-y-2">
                 <Label>Medical Notes</Label>
                 <Input {...register("medical_notes")} />
+              </div>
+
+              <hr className="my-4" />
+              <h3 className="font-semibold">Authorized Pickup</h3>
+              <p className="text-sm text-muted-foreground">
+                Add photos of people allowed to pick up this child. Primary parent is added automatically.
+              </p>
+
+              <PhotoCapture
+                label="Primary parent / guardian photo"
+                value={primaryPhoto}
+                onChange={setPrimaryPhoto}
+              />
+
+              <div className="rounded-lg border p-4 space-y-3 bg-muted/20">
+                <p className="text-sm font-medium">Second authorized person (optional)</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <Input
+                    placeholder="First name"
+                    value={secondGuardian.first_name}
+                    onChange={(e) => setSecondGuardian({ ...secondGuardian, first_name: e.target.value })}
+                  />
+                  <Input
+                    placeholder="Last name"
+                    value={secondGuardian.last_name}
+                    onChange={(e) => setSecondGuardian({ ...secondGuardian, last_name: e.target.value })}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <Input
+                    placeholder="Phone"
+                    value={secondGuardian.phone}
+                    onChange={(e) => setSecondGuardian({ ...secondGuardian, phone: e.target.value })}
+                  />
+                  <Input
+                    placeholder="Relationship"
+                    value={secondGuardian.relationship}
+                    onChange={(e) => setSecondGuardian({ ...secondGuardian, relationship: e.target.value })}
+                  />
+                </div>
+                <PhotoCapture
+                  label="Second person photo"
+                  value={secondGuardian.photo}
+                  onChange={(photo) => setSecondGuardian({ ...secondGuardian, photo })}
+                />
               </div>
 
               <Button type="submit" disabled={submitting} className="w-full">

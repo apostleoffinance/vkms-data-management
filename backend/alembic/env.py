@@ -5,7 +5,7 @@ from sqlalchemy import engine_from_config, pool
 
 from app.config import get_settings
 from app.database import Base
-from app.models import audit_log, attendance, child, class_model, parent, service, user, worker, worker_attendance  # noqa: F401
+from app.models import audit_log, attendance, authorized_pickup_contact, child, class_model, parent, service, user, worker, worker_attendance  # noqa: F401
 
 config = context.config
 if config.config_file_name is not None:

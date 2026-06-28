@@ -31,6 +31,7 @@ from app.services.child_service import (
     is_empty_placeholder,
     search_children,
 )
+from app.services.pickup_service import create_contact, ensure_primary_contact_from_parent
 
 router = APIRouter()
 
@@ -134,6 +135,33 @@ def register_child(body: ChildCreate, db: DbSession, admin: AdminUser) -> ChildR
         qr_code_data=qr_data,
     )
     db.add(child)
+    db.flush()
+
+    if body.authorized_pickups:
+        for index, pickup in enumerate(body.authorized_pickups):
+            photo_data = None
+            photo_content_type = None
+            if pickup.photo_base64:
+                from app.services.photo_service import decode_photo_base64
+
+                try:
+                    photo_data, photo_content_type = decode_photo_base64(pickup.photo_base64)
+                except ValueError as exc:
+                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+            create_contact(
+                db,
+                child_id=child.id,
+                first_name=pickup.first_name,
+                last_name=pickup.last_name,
+                phone=pickup.phone,
+                relationship=pickup.relationship,
+                is_primary=pickup.is_primary or index == 0,
+                photo_data=photo_data,
+                photo_content_type=photo_content_type,
+            )
+    else:
+        ensure_primary_contact_from_parent(db, child)
+
     db.commit()
     db.refresh(child)
     log_audit(
@@ -269,6 +297,8 @@ def bulk_import(
                 qr_code_data=qr_data,
             )
             db.add(child)
+            db.commit()
+            ensure_primary_contact_from_parent(db, child)
             db.commit()
             created += 1
         except ValueError as exc:
