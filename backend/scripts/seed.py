@@ -5,6 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from app import models  # noqa: F401
 from app.config import get_settings
 from app.constants import DEFAULT_CLASSES, LEGACY_CLASS_MAP
 from app.core.security import get_password_hash
