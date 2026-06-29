@@ -316,6 +316,7 @@ Current migration chain:
 | 005 | Authorized pickup contacts + attendance FKs |
 | 006 | `service_date` on attendance + unique constraint per child/date |
 | 007 | Unique active first name per parent (exact match at DB level) |
+| 008 | Unique tag number per service |
 
 ### Main tables
 

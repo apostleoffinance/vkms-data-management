@@ -13,6 +13,7 @@ class Attendance(Base):
     __table_args__ = (
         UniqueConstraint("child_id", "service_id", name="uq_child_service_attendance"),
         UniqueConstraint("child_id", "service_date", name="uq_child_service_date_attendance"),
+        UniqueConstraint("service_id", "tag_number", name="uq_attendance_service_tag"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

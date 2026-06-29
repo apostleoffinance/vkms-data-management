@@ -4,7 +4,7 @@ import uuid
 from datetime import UTC, date, datetime, timedelta
 
 import qrcode
-from sqlalchemy import func, or_
+from sqlalchemy import Integer, cast, func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
@@ -237,8 +237,12 @@ def get_service_by_id(db: Session, service_id: uuid.UUID) -> Service | None:
 
 def get_next_tag_number(db: Session, service_id: uuid.UUID) -> str:
     """Assign the next tag in check-in order for this service (001, 002, ...)."""
-    count = db.query(Attendance).filter(Attendance.service_id == service_id).count()
-    return f"{count + 1:03d}"
+    max_tag = (
+        db.query(func.max(cast(Attendance.tag_number, Integer)))
+        .filter(Attendance.service_id == service_id)
+        .scalar()
+    )
+    return f"{(max_tag or 0) + 1:03d}"
 
 
 def _pickup_stats_by_child_id(db: Session, child_ids: list[uuid.UUID]) -> dict[uuid.UUID, tuple[int, int]]:

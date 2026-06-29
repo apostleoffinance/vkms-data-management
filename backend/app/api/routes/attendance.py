@@ -28,14 +28,17 @@ SERVICE_REQUIRED_MESSAGE = (
 )
 
 
-def _resolve_service(db: DbSession, service_id: str | None) -> Service:
+def _resolve_service(db: DbSession, service_id: str | None, *, lock: bool = False) -> Service:
     if not service_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=SERVICE_REQUIRED_MESSAGE)
     try:
         service_uuid = uuid.UUID(service_id)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid service id") from exc
-    service = db.query(Service).filter(Service.id == service_uuid).first()
+    query = db.query(Service).filter(Service.id == service_uuid)
+    if lock:
+        query = query.with_for_update()
+    service = query.first()
     if not service:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Service not found")
     return service
@@ -149,10 +152,9 @@ def get_by_tag(
 
     record = (
         _attendance_query(db)
-        .join(Service)
         .filter(
             Attendance.tag_number == tag_number.zfill(3),
-            Service.service_date == service.service_date,
+            Attendance.service_id == service.id,
         )
         .first()
     )
@@ -172,7 +174,7 @@ def check_in(body: CheckInRequest, db: DbSession, current_user: VerifiedUser) ->
     if not child:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Child not found")
 
-    service = _resolve_service(db, body.service_id)
+    service = _resolve_service(db, body.service_id, lock=True)
 
     existing = _child_attendance_on_date(db, child.id, service.service_date)
     if existing:
@@ -194,36 +196,48 @@ def check_in(body: CheckInRequest, db: DbSession, current_user: VerifiedUser) ->
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid contact id") from exc
 
-    ensure_primary_contact_from_parent(db, child)
-    dropped_off = get_contact_for_child(db, child.id, dropped_off_contact_id)
-    if not dropped_off:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Selected drop-off person is not authorized for this child",
-        )
-
     tag_number = get_next_tag_number(db, service.id)
     now = datetime.now(UTC)
+    attendance: Attendance | None = None
 
-    attendance = Attendance(
-        child_id=child.id,
-        service_id=service.id,
-        service_date=service.service_date,
-        tag_number=tag_number,
-        check_in_time=now,
-        notes=body.notes,
-        dropped_off_contact_id=dropped_off.id,
-    )
-    db.add(attendance)
-    try:
-        db.commit()
-    except IntegrityError as exc:
-        db.rollback()
+    for attempt in range(2):
+        ensure_primary_contact_from_parent(db, child)
+        dropped_off = get_contact_for_child(db, child.id, dropped_off_contact_id)
+        if not dropped_off:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Selected drop-off person is not authorized for this child",
+            )
+        tag_number = get_next_tag_number(db, service.id)
+        attendance = Attendance(
+            child_id=child.id,
+            service_id=service.id,
+            service_date=service.service_date,
+            tag_number=tag_number,
+            check_in_time=now,
+            notes=body.notes,
+            dropped_off_contact_id=dropped_off.id,
+        )
+        db.add(attendance)
+        try:
+            db.commit()
+            break
+        except IntegrityError as exc:
+            db.rollback()
+            if attempt == 0 and "uq_attendance_service_tag" in str(exc.orig):
+                tag_number = get_next_tag_number(db, service.id)
+                continue
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"{child.full_name} already has attendance recorded for this service date",
+            ) from exc
+    if attendance is None:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"{child.full_name} already has attendance recorded for this service date",
-        ) from exc
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not assign a unique tag number. Please try again.",
+        )
 
+    db.refresh(attendance)
     log_audit(
         db,
         "check_in",
@@ -252,10 +266,9 @@ def check_out(body: CheckOutRequest, db: DbSession, current_user: VerifiedUser) 
 
     record = (
         _attendance_query(db)
-        .join(Service)
         .filter(
             Attendance.tag_number == body.tag_number.zfill(3),
-            Service.service_date == service.service_date,
+            Attendance.service_id == service.id,
         )
         .first()
     )
