@@ -23,7 +23,10 @@ from app.services.bulk_import_service import (
     parse_import_row,
 )
 from app.services.child_service import (
+    duplicate_first_name_detail,
+    find_child_with_conflicting_first_name,
     find_class_by_name,
+    first_names_overlap,
     generate_child_code,
     generate_qr_code,
     get_child_detail,
@@ -131,6 +134,13 @@ def register_child(body: ChildCreate, db: DbSession, admin: AdminUser) -> ChildR
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
+    conflict = find_child_with_conflicting_first_name(db, parent.id, body.first_name)
+    if conflict:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=duplicate_first_name_detail(conflict),
+        )
+
     child_code = generate_child_code(db)
     child_id = uuid.uuid4()
     qr_data = generate_qr_code(child_code, child_id)
@@ -203,6 +213,15 @@ def update_child(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Child not found")
 
     if body.first_name is not None:
+        if not first_names_overlap(body.first_name, child.first_name):
+            conflict = find_child_with_conflicting_first_name(
+                db, child.parent_id, body.first_name, exclude_child_id=child.id
+            )
+            if conflict:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=duplicate_first_name_detail(conflict),
+                )
         child.first_name = body.first_name
     if body.last_name is not None:
         child.last_name = body.last_name
@@ -265,19 +284,6 @@ def bulk_import(
                 errors.append(f"Row {i}: Class '{label}' not found")
                 continue
 
-            existing_child = (
-                db.query(Child)
-                .filter(
-                    Child.first_name.ilike(parsed.child_first_name),
-                    Child.last_name.ilike(parsed.child_last_name),
-                    Child.date_of_birth == parsed.date_of_birth,
-                )
-                .first()
-            )
-            if existing_child:
-                errors.append(f"Row {i}: Child already registered (skipped)")
-                continue
-
             try:
                 parent, _ = get_or_create_parent(
                     db,
@@ -290,6 +296,15 @@ def bulk_import(
                 )
             except ValueError as exc:
                 errors.append(f"Row {i}: {exc}")
+                continue
+
+            conflict = find_child_with_conflicting_first_name(
+                db, parent.id, parsed.child_first_name
+            )
+            if conflict:
+                errors.append(
+                    f'Row {i}: Parent already has a child named "{conflict.first_name}" (skipped)'
+                )
                 continue
 
             child_code = generate_child_code(db)

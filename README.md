@@ -150,6 +150,7 @@ python -m venv venv
 source venv/bin/activate   # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 cp .env.example .env       # edit DATABASE_URL if needed
+# Or set DATABASE_URL in the repo root .env — config loads ../.env automatically
 
 # Postgres only via Docker
 docker compose up postgres -d
@@ -289,12 +290,9 @@ alembic revision --autogenerate -m "describe change"
 
 ### Duplicate children cleanup
 
-After a bulk import, the same child may appear twice under one parent (e.g. `Triumph` and `Triumph Oghenemairo`). Use `dedupe_children.py` to find and remove duplicates:
+Each parent may have multiple children, but **no two active children under the same parent may share the same first name** (including variants like `Triumph` and `Triumph Oghenemairo`). Registration, bulk import, and updates enforce this in the API; migration `007` adds a database unique index on exact normalized first names per parent.
 
-- **Exact match:** same parent + same normalized first and last name
-- **Fuzzy match:** same parent + same last name, and one first name is a prefix of the other
-
-The script keeps the row with the most attendance (then pickup contacts, then lower `child_code`), reassigns attendance and pickup contacts, and deletes the duplicate.
+After a bulk import, use `dedupe_children.py` to merge any duplicates that slipped in earlier:
 
 ```bash
 cd backend
@@ -317,6 +315,7 @@ Current migration chain:
 | 004 | One service per calendar date |
 | 005 | Authorized pickup contacts + attendance FKs |
 | 006 | `service_date` on attendance + unique constraint per child/date |
+| 007 | Unique active first name per parent (exact match at DB level) |
 
 ### Main tables
 

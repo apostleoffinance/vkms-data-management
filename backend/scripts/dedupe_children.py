@@ -1,8 +1,6 @@
 """Find and merge duplicate children under the same parent.
 
-Matches:
-  - Exact: same normalized first + last name
-  - Fuzzy: same last name and one first name is a prefix of the other (e.g. Triumph / Triumph Oghenemairo)
+Matches active siblings whose first names overlap (e.g. Triumph / Triumph Oghenemairo).
 
 Keeps the row with the most attendance; ties by pickup contacts, then lower child_code.
 """
@@ -10,7 +8,6 @@ Keeps the row with the most attendance; ties by pickup contacts, then lower chil
 from __future__ import annotations
 
 import os
-import re
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -31,10 +28,7 @@ from app.database import SessionLocal
 from app.models.attendance import Attendance
 from app.models.authorized_pickup_contact import AuthorizedPickupContact
 from app.models.child import Child
-
-
-def _norm(s: str) -> str:
-    return re.sub(r"\s+", " ", s.strip().lower())
+from app.services.child_service import first_names_overlap
 
 
 def _score(db, child: Child) -> tuple[int, int, str]:
@@ -47,23 +41,16 @@ def _score(db, child: Child) -> tuple[int, int, str]:
     return (att, pickups, child.child_code)
 
 
-def _first_names_overlap(a: str, b: str) -> bool:
-    na, nb = _norm(a), _norm(b)
-    if na == nb:
-        return True
-    return na.startswith(nb + " ") or nb.startswith(na + " ")
-
-
 def find_duplicate_groups(db) -> list[list[Child]]:
     active = db.query(Child).filter(Child.is_active.is_(True)).order_by(Child.child_code).all()
-    by_parent_last: dict[tuple[UUID, str], list[Child]] = defaultdict(list)
+    by_parent: dict[UUID, list[Child]] = defaultdict(list)
     for child in active:
-        by_parent_last[(child.parent_id, _norm(child.last_name))].append(child)
+        by_parent[child.parent_id].append(child)
 
     groups: list[list[Child]] = []
     seen_ids: set[UUID] = set()
 
-    for children in by_parent_last.values():
+    for children in by_parent.values():
         if len(children) < 2:
             continue
         used: set[UUID] = set()
@@ -74,7 +61,7 @@ def find_duplicate_groups(db) -> list[list[Child]]:
             for c2 in children[i + 1 :]:
                 if c2.id in used:
                     continue
-                if any(_first_names_overlap(c2.first_name, m.first_name) for m in cluster):
+                if any(first_names_overlap(c2.first_name, m.first_name) for m in cluster):
                     cluster.append(c2)
             if len(cluster) > 1:
                 for c in cluster:
@@ -133,17 +120,12 @@ def main() -> None:
             return
         to_remove = sum(len(g) - 1 for g in groups)
         print(f"Found {len(groups)} group(s), {to_remove} duplicate row(s) to remove.\n")
-        results = []
         for group in sorted(groups, key=lambda g: (g[0].last_name, g[0].first_name)):
             keeper = max(group, key=lambda c: _score(db, c))
-            preview = {
-                "keeper": keeper.child_code,
-                "removed": [c.child_code for c in group if c.id != keeper.id],
-                "name": f"{group[0].first_name} {group[0].last_name}",
-            }
-            print(f"  {preview['name']}: keep {preview['keeper']}, remove {', '.join(preview['removed'])}")
+            removed = [c.child_code for c in group if c.id != keeper.id]
+            print(f"  {group[0].first_name} {group[0].last_name}: keep {keeper.child_code}, remove {', '.join(removed)}")
             if not dry_run:
-                results.append(merge_group(db, group))
+                merge_group(db, group)
         if dry_run:
             print("\n(dry run — no changes written)")
             db.rollback()

@@ -42,6 +42,43 @@ def normalize_phone(phone: str) -> str:
     return re.sub(r"\D", "", phone.strip())
 
 
+def normalize_person_name(name: str) -> str:
+    return re.sub(r"\s+", " ", name.strip().lower())
+
+
+def first_names_overlap(a: str, b: str) -> bool:
+    """True when two first names are equal or one extends the other (Triumph / Triumph Oghenemairo)."""
+    na, nb = normalize_person_name(a), normalize_person_name(b)
+    if na == nb:
+        return True
+    return na.startswith(nb + " ") or nb.startswith(na + " ")
+
+
+def find_child_with_conflicting_first_name(
+    db: Session,
+    parent_id: uuid.UUID,
+    first_name: str,
+    *,
+    exclude_child_id: uuid.UUID | None = None,
+) -> Child | None:
+    """Return an active sibling whose first name conflicts with the given name."""
+    siblings = (
+        db.query(Child)
+        .filter(Child.parent_id == parent_id, Child.is_active.is_(True))
+        .all()
+    )
+    for sibling in siblings:
+        if exclude_child_id and sibling.id == exclude_child_id:
+            continue
+        if first_names_overlap(first_name, sibling.first_name):
+            return sibling
+    return None
+
+
+def duplicate_first_name_detail(existing: Child) -> str:
+    return f'This parent already has a child named "{existing.first_name}"'
+
+
 _EMPTY_PLACEHOLDERS = frozenset({"nil", "n/a", "na", "none", "-", "--", "—", "n.a.", "n.a"})
 
 

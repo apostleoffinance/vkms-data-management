@@ -1,10 +1,18 @@
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+_BACKEND_DIR = Path(__file__).resolve().parent.parent
+
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    # Repo root .env first, then backend/.env overrides (when running from backend/)
+    model_config = SettingsConfigDict(
+        env_file=(_BACKEND_DIR.parent / ".env", _BACKEND_DIR / ".env"),
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
     APP_NAME: str = "Votage Kids Management System"
     APP_VERSION: str = "1.0.0"
