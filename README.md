@@ -275,6 +275,7 @@ docker compose -f docker-compose.prod.yml up -d --build
 - **Version:** PostgreSQL 16 (Docker image `postgres:16-alpine`)
 - **Migrations:** Alembic — `backend/alembic/versions/` (001–006)
 - **Seed:** `backend/scripts/seed.py` (idempotent — safe on every deploy; creates admin only if missing)
+- **Dedupe:** `backend/scripts/dedupe_children.py` — merge duplicate children under the same parent (see below)
 
 > **Alembic note:** Revision IDs must be **≤ 32 characters** (`alembic_version.version_num` is `VARCHAR(32)`).
 
@@ -285,6 +286,26 @@ cd backend && alembic upgrade head
 # Create new migration after model changes
 alembic revision --autogenerate -m "describe change"
 ```
+
+### Duplicate children cleanup
+
+After a bulk import, the same child may appear twice under one parent (e.g. `Triumph` and `Triumph Oghenemairo`). Use `dedupe_children.py` to find and remove duplicates:
+
+- **Exact match:** same parent + same normalized first and last name
+- **Fuzzy match:** same parent + same last name, and one first name is a prefix of the other
+
+The script keeps the row with the most attendance (then pickup contacts, then lower `child_code`), reassigns attendance and pickup contacts, and deletes the duplicate.
+
+```bash
+cd backend
+source venv/bin/activate   # or: .venv/bin/activate
+
+# Uses DATABASE_URL from repo root .env or backend/.env
+python scripts/dedupe_children.py --dry-run   # preview only
+python scripts/dedupe_children.py             # apply changes
+```
+
+Safe to re-run — reports `No duplicate children found.` when the database is clean.
 
 Current migration chain:
 
@@ -449,7 +470,9 @@ Upload `.xlsx` (admin only) via UI or `POST /api/v1/children/bulk-import`.
 │   │   ├── schemas/          # Pydantic schemas
 │   │   └── services/         # Business logic (analytics, AI, pickup, reports)
 │   ├── alembic/              # Migrations (001–006)
-│   ├── scripts/seed.py       # Idempotent seed
+│   ├── scripts/
+│   │   ├── seed.py           # Idempotent seed
+│   │   └── dedupe_children.py  # Merge duplicate children (post-import)
 │   ├── start.sh              # Cloud startup (migrate + seed + uvicorn)
 │   └── Dockerfile
 ├── frontend/

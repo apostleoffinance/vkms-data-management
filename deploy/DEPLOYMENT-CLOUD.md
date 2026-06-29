@@ -206,6 +206,25 @@ See `.env.cloud.example` for all variables.
 
 ---
 
+## Data maintenance
+
+### Duplicate children (after bulk import)
+
+If the same child appears twice under one parent, run the dedupe script against your Neon database:
+
+```bash
+cd backend
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+export DATABASE_URL="postgresql://..."   # Neon connection string
+python scripts/dedupe_children.py --dry-run
+python scripts/dedupe_children.py
+```
+
+See [README — Duplicate children cleanup](../README.md#duplicate-children-cleanup) for matching rules and keeper logic.
+
+---
+
 ## Updates after code changes
 
 ```bash
