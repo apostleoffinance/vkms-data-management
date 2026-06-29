@@ -79,7 +79,7 @@ function SectionTitle({ children, accent }: { children: React.ReactNode; accent:
   return (
     <div className="flex items-center gap-2">
       <span className={cn("h-5 w-1 rounded-full", accent)} />
-      <h3 className="text-lg font-bold text-foreground">{children}</h3>
+      <h3 className="text-lg font-bold text-neutral-900">{children}</h3>
     </div>
   );
 }
@@ -97,9 +97,9 @@ function ChartTooltip({
 }) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="rounded-lg border bg-white px-3 py-2 text-sm shadow-lg">
-      {label ? <p className="font-medium">{label}</p> : null}
-      <p className="text-amber-700 font-semibold">
+    <div className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm shadow-lg">
+      {label ? <p className="font-medium text-neutral-900">{label}</p> : null}
+      <p className="font-semibold text-amber-700">
         {payload[0].value}
         {suffix}
       </p>
@@ -110,7 +110,7 @@ function ChartTooltip({
 function AttendanceTrendPanel({ data }: { data: ChartDataPoint[] }) {
   if (!data.length || !data.some((p) => p.value > 0)) {
     return (
-      <div className="flex h-52 items-center justify-center rounded-xl border border-dashed bg-slate-50 text-sm text-muted-foreground">
+      <div className="flex h-52 items-center justify-center rounded-xl border border-dashed border-neutral-200 bg-neutral-50 text-sm text-neutral-600">
         No trend data for this period
       </div>
     );
@@ -158,7 +158,7 @@ function ClassDistributionPanel({ data }: { data: ChartDataPoint[] }) {
 
   if (!chartData.length) {
     return (
-      <div className="flex h-52 items-center justify-center rounded-xl border border-dashed bg-slate-50 text-sm text-muted-foreground">
+      <div className="flex h-52 items-center justify-center rounded-xl border border-dashed border-neutral-200 bg-neutral-50 text-sm text-neutral-600">
         No class data available
       </div>
     );
@@ -200,9 +200,9 @@ function ClassDistributionPanel({ data }: { data: ChartDataPoint[] }) {
                 className="h-2.5 w-2.5 shrink-0 rounded-full"
                 style={{ backgroundColor: REPORT_COLORS[index % REPORT_COLORS.length] }}
               />
-              <span className="truncate font-medium">{item.name}</span>
+              <span className="truncate font-medium text-neutral-900">{item.name}</span>
             </div>
-            <span className="shrink-0 tabular-nums text-muted-foreground">
+            <span className="shrink-0 tabular-nums text-neutral-600">
               {item.value} ({item.percent}%)
             </span>
           </li>
@@ -320,25 +320,25 @@ export function ExecutiveReportView({ data, className, id = "executive-report" }
             />
           </div>
           <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <div className="rounded-lg border border-amber-100 bg-amber-50/80 px-3 py-2">
-              <p className="text-xs text-muted-foreground">New Registrations (Month)</p>
-              <p className="text-lg font-bold">{kpis.new_registrations_this_month}</p>
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+              <p className="text-xs text-neutral-600">New Registrations (Month)</p>
+              <p className="text-lg font-bold text-neutral-900">{kpis.new_registrations_this_month}</p>
             </div>
-            <div className="rounded-lg border border-amber-100 bg-amber-50/80 px-3 py-2">
-              <p className="text-xs text-muted-foreground">Avg Weekly Attendance</p>
-              <p className="text-lg font-bold">{kpis.average_weekly_attendance}</p>
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+              <p className="text-xs text-neutral-600">Avg Weekly Attendance</p>
+              <p className="text-lg font-bold text-neutral-900">{kpis.average_weekly_attendance}</p>
             </div>
             {kpis.check_out_completion_pct != null ? (
-              <div className="rounded-lg border border-amber-100 bg-amber-50/80 px-3 py-2">
-                <p className="text-xs text-muted-foreground">Check-out Completion</p>
-                <p className="text-lg font-bold">{kpis.check_out_completion_pct}%</p>
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                <p className="text-xs text-neutral-600">Check-out Completion</p>
+                <p className="text-lg font-bold text-neutral-900">{kpis.check_out_completion_pct}%</p>
               </div>
             ) : null}
-            <div className="rounded-lg border border-amber-100 bg-amber-50/80 px-3 py-2">
-              <p className="text-xs text-muted-foreground flex items-center gap-1">
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+              <p className="text-xs text-neutral-600 flex items-center gap-1">
                 <TrendingUp className="h-3 w-3" /> Attendance Growth
               </p>
-              <p className="text-sm font-bold leading-snug">{growthDisplay}</p>
+              <p className="text-sm font-bold leading-snug text-neutral-900">{growthDisplay}</p>
             </div>
           </div>
         </section>
@@ -346,24 +346,24 @@ export function ExecutiveReportView({ data, className, id = "executive-report" }
         {/* Executive Summary */}
         <section className="rounded-xl border border-amber-200 bg-gradient-to-r from-amber-50 to-orange-50 p-5 print:break-inside-avoid">
           <SectionTitle accent="bg-amber-500">Executive Summary</SectionTitle>
-          <p className="mt-3 text-sm leading-relaxed text-foreground/90 whitespace-pre-line">
+          <p className="mt-3 text-sm leading-relaxed text-neutral-800 whitespace-pre-line">
             {summary.executive_summary}
           </p>
         </section>
 
         {/* Charts */}
         <section className="grid gap-6 lg:grid-cols-2 print:break-inside-avoid">
-          <div className="rounded-xl border bg-white p-4 shadow-sm">
+          <div className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
             <div className="mb-3 flex items-center gap-2">
               <BarChart3 className="h-4 w-4 text-amber-600" />
-              <h4 className="font-semibold">Attendance Trend</h4>
+              <h4 className="font-semibold text-neutral-900">Attendance Trend</h4>
             </div>
             <AttendanceTrendPanel data={charts.attendance_trend} />
           </div>
-          <div className="rounded-xl border bg-white p-4 shadow-sm">
+          <div className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
             <div className="mb-3 flex items-center gap-2">
               <Users className="h-4 w-4 text-emerald-600" />
-              <h4 className="font-semibold">Registered by Class</h4>
+              <h4 className="font-semibold text-neutral-900">Registered by Class</h4>
             </div>
             <ClassDistributionPanel data={charts.class_distribution} />
           </div>
@@ -374,26 +374,26 @@ export function ExecutiveReportView({ data, className, id = "executive-report" }
           <SectionTitle accent="bg-emerald-500">Retention Analysis</SectionTitle>
           <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
             <div className="rounded-lg bg-white p-3 shadow-sm">
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs text-neutral-600">
                 {isDaily ? "Returned From Previous Service" : "Returning Children"}
               </p>
               <p className="text-2xl font-bold text-emerald-700">{retention.returning_count}</p>
             </div>
             <div className="rounded-lg bg-white p-3 shadow-sm">
-              <p className="text-xs text-muted-foreground">First Check-in Ever</p>
+              <p className="text-xs text-neutral-600">First Check-in Ever</p>
               <p className="text-2xl font-bold text-emerald-700">{retention.first_check_in_ever_count}</p>
             </div>
             <div className="rounded-lg bg-white p-3 shadow-sm">
-              <p className="text-xs text-muted-foreground">Unique Present</p>
+              <p className="text-xs text-neutral-600">Unique Present</p>
               <p className="text-2xl font-bold text-emerald-700">{retention.unique_children_present}</p>
             </div>
             <div className="rounded-lg bg-white p-3 shadow-sm">
-              <p className="text-xs text-muted-foreground">Retention Rate</p>
+              <p className="text-xs text-neutral-600">Retention Rate</p>
               <p className="text-2xl font-bold text-emerald-700">
                 {retention.retention_rate_pct != null ? `${retention.retention_rate_pct}%` : "—"}
               </p>
               {retention.retention_note ? (
-                <p className="mt-1 text-xs text-muted-foreground">{retention.retention_note}</p>
+                <p className="mt-1 text-xs text-neutral-600">{retention.retention_note}</p>
               ) : null}
             </div>
           </div>
@@ -421,9 +421,9 @@ export function ExecutiveReportView({ data, className, id = "executive-report" }
                       key={row.class_name}
                       className={cn("border-b", i % 2 === 0 ? "bg-amber-50/40" : "bg-white")}
                     >
-                      <td className="p-2 font-medium">{row.class_name}</td>
-                      <td className="p-2 text-right tabular-nums">{row.present}</td>
-                      <td className="p-2 text-right tabular-nums">{row.registered}</td>
+                      <td className="p-2 font-medium text-neutral-900">{row.class_name}</td>
+                      <td className="p-2 text-right tabular-nums text-neutral-800">{row.present}</td>
+                      <td className="p-2 text-right tabular-nums text-neutral-800">{row.registered}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -451,9 +451,9 @@ export function ExecutiveReportView({ data, className, id = "executive-report" }
                       key={`${w.worker_name}-${w.service_date}-${i}`}
                       className={cn("border-b border-blue-100", i % 2 === 0 ? "bg-white" : "bg-blue-50/60")}
                     >
-                      <td className="p-2 font-medium">{w.worker_name}</td>
-                      <td className="p-2">{w.check_in}</td>
-                      <td className="p-2">{w.service_date}</td>
+                      <td className="p-2 font-medium text-neutral-900">{w.worker_name}</td>
+                      <td className="p-2 text-neutral-800">{w.check_in}</td>
+                      <td className="p-2 text-neutral-800">{w.service_date}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -482,18 +482,18 @@ export function ExecutiveReportView({ data, className, id = "executive-report" }
                 <tbody>
                   {metrics.absent_two_services.map((row) => (
                     <tr key={`${row.child_name}-${row.phone}`} className="border-b bg-white even:bg-red-50/50">
-                      <td className="p-2 font-medium">{row.child_name}</td>
-                      <td className="p-2">{row.class_name}</td>
-                      <td className="p-2">{row.parent_name}</td>
-                      <td className="p-2">{row.phone}</td>
-                      <td className="p-2">{row.last_attendance}</td>
+                      <td className="p-2 font-medium text-neutral-900">{row.child_name}</td>
+                      <td className="p-2 text-neutral-800">{row.class_name}</td>
+                      <td className="p-2 text-neutral-800">{row.parent_name}</td>
+                      <td className="p-2 text-neutral-800">{row.phone}</td>
+                      <td className="p-2 text-neutral-800">{row.last_attendance}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           ) : (
-            <p className="mt-3 text-sm text-muted-foreground">
+            <p className="mt-3 text-sm text-neutral-600">
               No children require follow-up at this time.
             </p>
           )}
@@ -501,28 +501,28 @@ export function ExecutiveReportView({ data, className, id = "executive-report" }
 
         {/* Insights & Recommendations */}
         <section className="grid gap-4 lg:grid-cols-2 print:break-inside-avoid">
-          <div className="rounded-xl border border-indigo-200 bg-indigo-50/50 p-5">
-            <div className="flex items-center gap-2 text-indigo-800">
+          <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-5">
+            <div className="flex items-center gap-2 text-indigo-900">
               <Lightbulb className="h-5 w-5" />
               <h4 className="font-bold">Key Insights</h4>
             </div>
             <ul className="mt-3 space-y-2">
               {summary.key_insights.map((item, i) => (
-                <li key={i} className="flex gap-2 text-sm leading-relaxed">
-                  <ArrowUpRight className="mt-0.5 h-4 w-4 shrink-0 text-indigo-500" />
+                <li key={i} className="flex gap-2 text-sm leading-relaxed text-neutral-800">
+                  <ArrowUpRight className="mt-0.5 h-4 w-4 shrink-0 text-indigo-600" />
                   <span>{item}</span>
                 </li>
               ))}
             </ul>
           </div>
-          <div className="rounded-xl border border-teal-200 bg-teal-50/50 p-5">
-            <div className="flex items-center gap-2 text-teal-800">
+          <div className="rounded-xl border border-teal-200 bg-teal-50 p-5">
+            <div className="flex items-center gap-2 text-teal-900">
               <Target className="h-5 w-5" />
               <h4 className="font-bold">Recommendations</h4>
             </div>
             <ul className="mt-3 space-y-2">
               {summary.recommendations.map((item, i) => (
-                <li key={i} className="flex gap-2 text-sm leading-relaxed">
+                <li key={i} className="flex gap-2 text-sm leading-relaxed text-neutral-800">
                   <span className="mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-teal-600 text-xs font-bold text-white">
                     {i + 1}
                   </span>
@@ -533,7 +533,7 @@ export function ExecutiveReportView({ data, className, id = "executive-report" }
           </div>
         </section>
 
-        <footer className="border-t pt-4 text-center text-xs text-muted-foreground print:break-inside-avoid">
+        <footer className="border-t border-neutral-200 pt-4 text-center text-xs text-neutral-500 print:break-inside-avoid">
           Generated by VKMS · Votage Kids Management System · {new Date().toLocaleDateString()}
         </footer>
       </div>

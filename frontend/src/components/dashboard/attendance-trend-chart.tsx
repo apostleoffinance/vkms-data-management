@@ -12,7 +12,7 @@ import {
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { BRAND } from "@/lib/brand";
+import { useChartColors } from "@/lib/chart-theme";
 import type { ChartDataPoint } from "@/types";
 
 interface AttendanceTrendChartProps {
@@ -48,6 +48,8 @@ const periodLabels: Record<string, string> = {
 };
 
 export function AttendanceTrendChart({ data, period, loading }: AttendanceTrendChartProps) {
+  const colors = useChartColors();
+
   if (loading) {
     return (
       <Card>
@@ -75,15 +77,15 @@ export function AttendanceTrendChart({ data, period, loading }: AttendanceTrendC
         ) : (
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+              <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} vertical={false} />
               <XAxis
                 dataKey="label"
-                tick={{ fontSize: 12, fill: "var(--muted-foreground)" }}
+                tick={{ fontSize: 12, fill: colors.tick }}
                 axisLine={false}
                 tickLine={false}
               />
               <YAxis
-                tick={{ fontSize: 12, fill: "var(--muted-foreground)" }}
+                tick={{ fontSize: 12, fill: colors.tick }}
                 axisLine={false}
                 tickLine={false}
                 allowDecimals={false}
@@ -92,10 +94,10 @@ export function AttendanceTrendChart({ data, period, loading }: AttendanceTrendC
               <Line
                 type="monotone"
                 dataKey="value"
-                stroke={BRAND.black}
+                stroke={colors.line}
                 strokeWidth={2.5}
-                dot={{ fill: BRAND.black, strokeWidth: 0, r: 4 }}
-                activeDot={{ r: 6, fill: BRAND.yellow }}
+                dot={{ fill: colors.lineDot, strokeWidth: 0, r: 4 }}
+                activeDot={{ r: 6, fill: colors.activeDot }}
               />
             </LineChart>
           </ResponsiveContainer>

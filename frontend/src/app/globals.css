@@ -103,3 +103,16 @@ body {
     border-radius: 0 !important;
   }
 }
+
+/* Report always renders as a light document with legible text, regardless of app theme */
+.executive-report-document {
+  color-scheme: light;
+  color: #171717;
+  --background: #ffffff;
+  --foreground: #0a0a0a;
+  --card: #ffffff;
+  --card-foreground: #0a0a0a;
+  --muted-foreground: #525252;
+  --border: #e5e5e5;
+  --primary: #0a0a0a;
+}
