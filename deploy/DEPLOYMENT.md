@@ -8,11 +8,12 @@ This guide deploys VKMS on a single Ubuntu 22.04/24.04 VM (Oracle Cloud Free Tie
 
 | Feature | Notes |
 |---------|--------|
-| Child check-in/out | Service tags, one row per child per service date |
+| Child check-in/out | Service tags unique per service; one row per child per service date |
 | Authorized pickup | Contacts + photos; drop-off/pickup at check-in/out |
 | Executive reports | Admin KPIs, charts, AI summary (optional `GEMINI_API_KEY`) |
 | Worker kiosk | Roster attendance without login |
-| Migrations | Alembic 001–006 — applied automatically on backend start |
+| Duplicate prevention | Unique first name per parent (active children); unique tag per service |
+| Migrations | Alembic 001–008 — applied automatically on backend start |
 
 ---
 
@@ -203,7 +204,15 @@ curl "https://${BACKEND_DOMAIN}/health"
 curl "https://${BACKEND_DOMAIN}/api/docs"
 ```
 
-Current Alembic head: `006_attendance_unique_date`. New migration revision IDs must be **≤ 32 characters**.
+Current Alembic head: **`008_tag_unique_per_service`**. New migration revision IDs must be **≤ 32 characters**.
+
+| Revision | Purpose |
+|----------|---------|
+| 001–006 | Initial schema through attendance unique per child/date |
+| 007 | Unique active first name per parent |
+| 008 | Unique tag number per service |
+
+After bulk import, duplicate children can be merged with `backend/scripts/dedupe_children.py` (see [README](../README.md#duplicate-children-cleanup)).
 
 ---
 

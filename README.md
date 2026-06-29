@@ -10,10 +10,13 @@ A children church attendance and check-in/check-out management system for Votage
 
 - Register children and link them to parents/guardians
 - Check children in and out per church service
-- Assign **service tags** at check-in (sequential per service, e.g. 001, 002 — not permanent child IDs)
+- Assign **service tags** at check-in (sequential per service, e.g. 001, 002 — unique per service, not permanent child IDs)
 - **Authorized pickup contacts** with photos — select who dropped off / picked up at check-in and check-out
 - **One attendance row per child per service date** — prevents duplicate check-in/check-out
+- **One active child per first name per parent** — siblings allowed; duplicate names under the same parent are blocked (registration, bulk import, and DB)
 - Admin dashboard with charts, reports, and bulk Excel import
+- **Children search** — browse and filter (e.g. missing pickup photos)
+- **Service management** — create, rename, and delete services (one service per calendar date)
 - **Executive ministry reports** — AI-powered KPIs, retention, charts, follow-up list (admin)
 - **Worker roster** attendance (admin kiosk — workers tap their name, no login required)
 - Audit logging and role-based access control
@@ -179,6 +182,7 @@ Never commit real secrets. Use platform dashboards or local `.env` files (gitign
 |------|---------|
 | [.env.example](.env.example) | Local Docker / shared reference |
 | [backend/.env.example](backend/.env.example) | Backend-only local dev |
+| Repo root `.env` | Also loaded by backend when running from `backend/` (e.g. Neon `DATABASE_URL` for local Alembic) |
 | [frontend/.env.example](frontend/.env.example) | Frontend local dev |
 | [.env.cloud.example](.env.cloud.example) | Cloud deployment reference (no real values) |
 | [.env.production](.env.production) | VPS Docker production template |
@@ -274,19 +278,33 @@ docker compose -f docker-compose.prod.yml up -d --build
 ## Database
 
 - **Version:** PostgreSQL 16 (Docker image `postgres:16-alpine`)
-- **Migrations:** Alembic — `backend/alembic/versions/` (001–006)
+- **Migrations:** Alembic — `backend/alembic/versions/` (001–008)
 - **Seed:** `backend/scripts/seed.py` (idempotent — safe on every deploy; creates admin only if missing)
 - **Dedupe:** `backend/scripts/dedupe_children.py` — merge duplicate children under the same parent (see below)
 
 > **Alembic note:** Revision IDs must be **≤ 32 characters** (`alembic_version.version_num` is `VARCHAR(32)`).
 
 ```bash
-# Run migrations manually (local)
-cd backend && alembic upgrade head
+# Run migrations manually (local — use project venv, not system conda alembic)
+cd backend
+source .venv/bin/activate   # or: python -m venv .venv && pip install -r requirements.txt
+alembic upgrade head       # reads DATABASE_URL from ../.env or backend/.env
 
 # Create new migration after model changes
 alembic revision --autogenerate -m "describe change"
 ```
+
+> **Important:** Always **push migration files to GitHub before** running `alembic upgrade head` against Neon locally. If the database revision is ahead of deployed code, Render will fail with `Can't locate revision identified by '…'`.
+
+### Data integrity rules
+
+| Rule | Enforced by |
+|------|-------------|
+| One service per calendar date | API + DB unique on `service_date` |
+| One check-in per child per service date | API + DB unique on `child_id` + `service_date` |
+| Unique tag per service (001, 002, …) | `MAX(tag)+1` assignment, row lock at check-in, DB unique on `service_id` + `tag_number` |
+| One active child per first name per parent | API (fuzzy match) + DB unique index on normalized first name |
+| Parent reuse by phone at registration | `get_or_create_parent()` |
 
 ### Duplicate children cleanup
 
@@ -340,11 +358,11 @@ Current migration chain:
 ### Child code vs service tag
 
 - **Child code** (`VK-#####`): permanent ID assigned at registration
-- **Service tag** (`001`, `002`, …): assigned **only at check-in**, per service, in check-in order; resets each service day
+- **Service tag** (`001`, `002`, …): assigned **only at check-in**, per service, in check-in order; **unique within that service**; resets each new service day
 
 ### Parent lookup
 
-Registration can match an existing parent by phone number to attach siblings without duplicating parent rows.
+Registration and bulk import match an existing parent by phone number to attach siblings without duplicating parent rows. A parent may have many children, but **not two active children with the same first name** (e.g. `Triumph` and `Triumph Oghenemairo` are treated as duplicates).
 
 ### Worker attendance
 
@@ -401,6 +419,8 @@ Interactive docs: `/api/docs` (Swagger) when the backend is running.
 
 Upload `.xlsx` (admin only) via UI or `POST /api/v1/children/bulk-import`.
 
+Rows are skipped when the parent already has an active child with a conflicting first name (same rule as single registration). Parents are matched or created by phone.
+
 | Column | Field |
 |--------|-------|
 | A | First Name |
@@ -450,7 +470,11 @@ Upload `.xlsx` (admin only) via UI or `POST /api/v1/children/bulk-import`.
 | Login shows "Failed to fetch" | Set `NEXT_PUBLIC_API_URL` on Vercel and **redeploy**; set `CORS_ORIGINS` + `COOKIE_SAMESITE=none` on Render |
 | Login loops on phone/iPad | Deploy latest code (Bearer token auth); clear site data and retry |
 | Render build fails on `pydantic-core` | Set `PYTHON_VERSION=3.12.8` on Render |
-| Alembic migration fails on deploy | Check Render logs; revision IDs must be ≤ 32 chars; see migration table above |
+| Alembic migration fails on deploy | Check Render logs; revision IDs must be ≤ 32 chars; ensure migration file is **pushed to GitHub** before DB is upgraded locally |
+| `Can't locate revision identified by '00…'` | Database revision ahead of deployed code — push latest `main` and redeploy Render |
+| Local `alembic` connects to localhost | Set `DATABASE_URL` in repo root `.env`; use `backend/.venv/bin/alembic`, not conda global alembic |
+| Duplicate child under same parent | Run `scripts/dedupe_children.py` against Neon; new registrations are blocked by API |
+| Two children same tag number | Prevented by migration 008 — unique tag per service |
 | Seed fails after deploy | Ensure all models are imported in `backend/app/models/__init__.py` |
 | Slow first request | Render free cold start — use UptimeRobot or upgrade plan |
 | CORS errors | Vercel URL in `CORS_ORIGINS` must match exactly (no trailing slash) |
@@ -469,7 +493,7 @@ Upload `.xlsx` (admin only) via UI or `POST /api/v1/children/bulk-import`.
 │   │   ├── models/           # SQLAlchemy models
 │   │   ├── schemas/          # Pydantic schemas
 │   │   └── services/         # Business logic (analytics, AI, pickup, reports)
-│   ├── alembic/              # Migrations (001–006)
+│   ├── alembic/              # Migrations (001–008)
 │   ├── scripts/
 │   │   ├── seed.py           # Idempotent seed
 │   │   └── dedupe_children.py  # Merge duplicate children (post-import)

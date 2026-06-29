@@ -23,6 +23,22 @@ Local development still uses `docker compose up -d --build`.
 
 ---
 
+## What’s included (recent)
+
+| Area | Behavior |
+|------|----------|
+| **Migrations** | Alembic `001`–`008` — run automatically on Render via `backend/start.sh` |
+| **Child registration** | Blocks duplicate first names under the same parent (API + DB index) |
+| **Bulk import** | Skips rows that would duplicate a sibling’s first name |
+| **Check-in tags** | Sequential `001`, `002`, … — **unique per service** (DB constraint) |
+| **Check-in/out** | One attendance row per child per service date |
+| **Services** | One service per calendar date |
+| **Dedupe script** | `backend/scripts/dedupe_children.py` — merge legacy duplicate children on Neon |
+
+Current Alembic head: **`008_tag_unique_per_service`**. Revision IDs must be **≤ 32 characters**.
+
+---
+
 ## Prerequisites
 
 - GitHub repo pushed with **full `frontend/` source** (not a submodule)
@@ -208,20 +224,52 @@ See `.env.cloud.example` for all variables.
 
 ## Data maintenance
 
-### Duplicate children (after bulk import)
+### Run migrations against Neon (from your Mac)
 
-If the same child appears twice under one parent, run the dedupe script against your Neon database:
+Use the project venv and Neon `DATABASE_URL` (repo root `.env` is loaded automatically):
 
 ```bash
 cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-export DATABASE_URL="postgresql://..."   # Neon connection string
+# DATABASE_URL in ../.env, or:
+export DATABASE_URL="postgresql://...?sslmode=require"
+.venv/bin/alembic upgrade head
+.venv/bin/alembic current    # should show 008_tag_unique_per_service (head)
+```
+
+> Use `.venv/bin/alembic`, not a global/conda `alembic` — and ensure `DATABASE_URL` points at Neon, not `localhost`.
+
+**Deploy order:** push migration files to GitHub **first**, then run `alembic upgrade head` on Neon. If the database is at revision `008` but Render deploys code without that file, startup fails with `Can't locate revision identified by '008_…'`.
+
+### Duplicate children (after bulk import)
+
+If the same child appears twice under one parent (legacy data), run the dedupe script:
+
+```bash
+cd backend
+source .venv/bin/activate
+export DATABASE_URL="postgresql://..."   # Neon connection string, if not in ../.env
 python scripts/dedupe_children.py --dry-run
 python scripts/dedupe_children.py
 ```
 
+**Prevention (new data):** registration, bulk import, and child updates reject a second active child with the same first name under one parent (including variants like `Triumph` / `Triumph Oghenemairo`). Migration `007` adds a DB unique index on exact normalized first names.
+
 See [README — Duplicate children cleanup](../README.md#duplicate-children-cleanup) for matching rules and keeper logic.
+
+### Migration reference
+
+| Revision | Purpose |
+|----------|---------|
+| 001 | Initial schema |
+| 002 | Workers roster |
+| 003 | Unique service name + date |
+| 004 | One service per calendar date |
+| 005 | Authorized pickup contacts + attendance FKs |
+| 006 | `service_date` on attendance + unique per child/date |
+| 007 | Unique active first name per parent |
+| 008 | Unique tag number per service |
 
 ---
 
@@ -231,8 +279,14 @@ See [README — Duplicate children cleanup](../README.md#duplicate-children-clea
 git push origin main
 ```
 
-- Render redeploys backend automatically
+- Render redeploys backend automatically (`start.sh` → `alembic upgrade head` → seed → uvicorn)
 - Vercel redeploys frontend automatically
+
+If you add a new Alembic migration:
+
+1. Commit and push the new file under `backend/alembic/versions/`
+2. Let Render deploy (or run `alembic upgrade head` locally against Neon **after** the file exists in the repo)
+3. Confirm in Render logs: `Running database migrations...` with no errors
 
 If you change `BACKEND_DOMAIN` or API URL, update `NEXT_PUBLIC_API_URL` on Vercel and redeploy.
 
@@ -244,11 +298,16 @@ If you change `BACKEND_DOMAIN` or API URL, update `NEXT_PUBLIC_API_URL` on Verce
 |-------|-----|
 | Render build fails | Check **Logs** tab; confirm Root Directory is `backend` |
 | `relation does not exist` | Migrations failed — check `alembic upgrade head` in Render logs |
+| `Can't locate revision identified by '00…'` | DB ahead of deployed code — push latest `main` (must include migration file) and redeploy |
+| Deploy exits 255 at migrations | Same as above, or fix migration SQL error in logs |
+| Local alembic → localhost password error | Set `DATABASE_URL` in repo root `.env`; use `backend/.venv/bin/alembic` |
 | Login works locally, not on Vercel | `CORS_ORIGINS` + `COOKIE_SAMESITE=none` |
 | CORS error in browser | Vercel URL must be in `CORS_ORIGINS` exactly |
-| Neon connection error | Add `?sslmode=require`; use Direct connection string |
+| Neon connection error | Add `?sslmode=require`; use connection string from Neon console |
 | Vercel build fails | Confirm `frontend/` is in repo (not submodule) |
 | Slow Sunday morning | UptimeRobot ping on `/health` |
+| Child on absent list but was checked in | Often a duplicate child profile — run `dedupe_children.py` |
+| Duplicate tag at check-in | Should not occur after migration 008; redeploy latest backend |
 
 ---
 
