@@ -101,6 +101,50 @@ body {
     box-shadow: none !important;
     border: none !important;
     border-radius: 0 !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+    color-adjust: exact;
+  }
+
+  /* Force high-contrast text when backgrounds are stripped by the print engine */
+  .executive-report-header {
+    background: #fef3c7 !important;
+    color: #0a0a0a !important;
+  }
+
+  .kpi-card {
+    background: #ffffff !important;
+    color: #0a0a0a !important;
+    border: 2px solid #0a0a0a !important;
+  }
+
+  .kpi-card .kpi-label {
+    color: #404040 !important;
+    font-weight: 700 !important;
+  }
+
+  .kpi-card .kpi-value {
+    color: #0a0a0a !important;
+    font-weight: 800 !important;
+  }
+
+  .kpi-card .kpi-sub {
+    color: #525252 !important;
+    font-weight: 600 !important;
+  }
+
+  .executive-kpi-secondary {
+    background: #ffffff !important;
+    border: 2px solid #0a0a0a !important;
+  }
+
+  .executive-kpi-secondary p {
+    color: #0a0a0a !important;
+  }
+
+  .executive-report-document table thead tr {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
   }
 }
 

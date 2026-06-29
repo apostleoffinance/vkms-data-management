@@ -61,16 +61,22 @@ function KpiCard({
   return (
     <div
       className={cn(
-        "relative overflow-hidden rounded-xl p-4 text-white shadow-md",
+        "kpi-card relative overflow-hidden rounded-xl p-4 shadow-md",
+        "text-white",
         gradient,
+        "print:border-2 print:border-neutral-900 print:bg-white print:text-neutral-900 print:shadow-none",
       )}
     >
-      <div className="absolute -right-2 -top-2 opacity-20">
+      <div className="absolute -right-2 -top-2 opacity-20 print:hidden">
         <Icon className="h-16 w-16" />
       </div>
-      <p className="text-xs font-medium uppercase tracking-wide text-white/90">{label}</p>
-      <p className="mt-1 text-3xl font-bold tabular-nums">{value}</p>
-      {sub ? <p className="mt-1 text-xs text-white/80">{sub}</p> : null}
+      <p className="kpi-label text-xs font-semibold uppercase tracking-wide text-white print:text-neutral-700">
+        {label}
+      </p>
+      <p className="kpi-value mt-1 text-3xl font-bold tabular-nums print:text-neutral-900">{value}</p>
+      {sub ? (
+        <p className="kpi-sub mt-1 text-xs font-medium text-white/90 print:text-neutral-600">{sub}</p>
+      ) : null}
     </div>
   );
 }
@@ -79,7 +85,7 @@ function SectionTitle({ children, accent }: { children: React.ReactNode; accent:
   return (
     <div className="flex items-center gap-2">
       <span className={cn("h-5 w-1 rounded-full", accent)} />
-      <h3 className="text-lg font-bold text-neutral-900">{children}</h3>
+      <h3 className="text-lg font-bold text-neutral-900 print:text-xl">{children}</h3>
     </div>
   );
 }
@@ -259,24 +265,24 @@ export function ExecutiveReportView({ data, className, id = "executive-report" }
       )}
     >
       {/* Header */}
-      <header className="relative bg-gradient-to-br from-amber-500 via-amber-600 to-orange-700 px-6 py-8 text-white print:break-inside-avoid">
-        <div className="absolute inset-0 opacity-10">
+      <header className="executive-report-header relative bg-gradient-to-br from-amber-500 via-amber-600 to-orange-700 px-6 py-8 text-white print:break-inside-avoid print:border-b-4 print:border-amber-700 print:bg-amber-100 print:text-neutral-900">
+        <div className="absolute inset-0 opacity-10 print:hidden">
           <div className="absolute -right-8 -top-8 h-40 w-40 rounded-full bg-white" />
           <div className="absolute -bottom-12 -left-12 h-48 w-48 rounded-full bg-white" />
         </div>
         <div className="relative">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <p className="flex items-center gap-2 text-sm font-medium text-amber-100">
-                <Sparkles className="h-4 w-4" />
+              <p className="flex items-center gap-2 text-sm font-semibold text-amber-100 print:text-neutral-700">
+                <Sparkles className="h-4 w-4 print:text-amber-700" />
                 Ministry Intelligence Report
               </p>
-              <h2 className="mt-1 text-3xl font-bold tracking-tight">Votage Kids</h2>
-              <p className="mt-1 text-lg text-amber-50">Executive Summary</p>
+              <h2 className="mt-1 text-3xl font-bold tracking-tight print:text-neutral-900">Votage Kids</h2>
+              <p className="mt-1 text-lg font-medium text-amber-50 print:text-neutral-800">Executive Summary</p>
             </div>
-            <div className="rounded-xl bg-white/15 px-4 py-3 text-right backdrop-blur-sm">
-              <p className="text-sm font-semibold">{metrics.period_label}</p>
-              <p className="text-xs text-amber-100">{metrics.service_name}</p>
+            <div className="rounded-xl bg-white/15 px-4 py-3 text-right backdrop-blur-sm print:border print:border-neutral-400 print:bg-white">
+              <p className="text-sm font-bold print:text-neutral-900">{metrics.period_label}</p>
+              <p className="text-xs font-medium text-amber-100 print:text-neutral-700">{metrics.service_name}</p>
             </div>
           </div>
         </div>
@@ -320,22 +326,22 @@ export function ExecutiveReportView({ data, className, id = "executive-report" }
             />
           </div>
           <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
-              <p className="text-xs text-neutral-600">New Registrations (Month)</p>
-              <p className="text-lg font-bold text-neutral-900">{kpis.new_registrations_this_month}</p>
+            <div className="executive-kpi-secondary rounded-lg border-2 border-amber-300 bg-amber-50 px-3 py-2 print:border-neutral-900">
+              <p className="text-xs font-semibold text-neutral-700">New Registrations (Month)</p>
+              <p className="text-xl font-bold text-neutral-900">{kpis.new_registrations_this_month}</p>
             </div>
-            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
-              <p className="text-xs text-neutral-600">Avg Weekly Attendance</p>
-              <p className="text-lg font-bold text-neutral-900">{kpis.average_weekly_attendance}</p>
+            <div className="executive-kpi-secondary rounded-lg border-2 border-amber-300 bg-amber-50 px-3 py-2 print:border-neutral-900">
+              <p className="text-xs font-semibold text-neutral-700">Avg Weekly Attendance</p>
+              <p className="text-xl font-bold text-neutral-900">{kpis.average_weekly_attendance}</p>
             </div>
             {kpis.check_out_completion_pct != null ? (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
-                <p className="text-xs text-neutral-600">Check-out Completion</p>
-                <p className="text-lg font-bold text-neutral-900">{kpis.check_out_completion_pct}%</p>
+              <div className="executive-kpi-secondary rounded-lg border-2 border-amber-300 bg-amber-50 px-3 py-2 print:border-neutral-900">
+                <p className="text-xs font-semibold text-neutral-700">Check-out Completion</p>
+                <p className="text-xl font-bold text-neutral-900">{kpis.check_out_completion_pct}%</p>
               </div>
             ) : null}
-            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
-              <p className="text-xs text-neutral-600 flex items-center gap-1">
+            <div className="executive-kpi-secondary rounded-lg border-2 border-amber-300 bg-amber-50 px-3 py-2 print:border-neutral-900">
+              <p className="text-xs font-semibold text-neutral-700 flex items-center gap-1">
                 <TrendingUp className="h-3 w-3" /> Attendance Growth
               </p>
               <p className="text-sm font-bold leading-snug text-neutral-900">{growthDisplay}</p>
@@ -344,9 +350,9 @@ export function ExecutiveReportView({ data, className, id = "executive-report" }
         </section>
 
         {/* Executive Summary */}
-        <section className="rounded-xl border border-amber-200 bg-gradient-to-r from-amber-50 to-orange-50 p-5 print:break-inside-avoid">
+        <section className="rounded-xl border-2 border-amber-300 bg-amber-50 p-5 print:break-inside-avoid print:border-neutral-900">
           <SectionTitle accent="bg-amber-500">Executive Summary</SectionTitle>
-          <p className="mt-3 text-sm leading-relaxed text-neutral-800 whitespace-pre-line">
+          <p className="mt-3 text-base leading-relaxed font-medium text-neutral-900 whitespace-pre-line">
             {summary.executive_summary}
           </p>
         </section>
@@ -370,30 +376,30 @@ export function ExecutiveReportView({ data, className, id = "executive-report" }
         </section>
 
         {/* Retention */}
-        <section className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-5 print:break-inside-avoid">
+        <section className="rounded-xl border-2 border-emerald-300 bg-emerald-50 p-5 print:break-inside-avoid print:border-neutral-900">
           <SectionTitle accent="bg-emerald-500">Retention Analysis</SectionTitle>
           <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
             <div className="rounded-lg bg-white p-3 shadow-sm">
-              <p className="text-xs text-neutral-600">
+              <p className="text-xs font-semibold text-neutral-700">
                 {isDaily ? "Returned From Previous Service" : "Returning Children"}
               </p>
-              <p className="text-2xl font-bold text-emerald-700">{retention.returning_count}</p>
+              <p className="text-2xl font-extrabold text-emerald-800">{retention.returning_count}</p>
             </div>
-            <div className="rounded-lg bg-white p-3 shadow-sm">
-              <p className="text-xs text-neutral-600">First Check-in Ever</p>
-              <p className="text-2xl font-bold text-emerald-700">{retention.first_check_in_ever_count}</p>
+            <div className="rounded-lg border border-emerald-200 bg-white p-3 shadow-sm">
+              <p className="text-xs font-semibold text-neutral-700">First Check-in Ever</p>
+              <p className="text-2xl font-extrabold text-emerald-800">{retention.first_check_in_ever_count}</p>
             </div>
-            <div className="rounded-lg bg-white p-3 shadow-sm">
-              <p className="text-xs text-neutral-600">Unique Present</p>
-              <p className="text-2xl font-bold text-emerald-700">{retention.unique_children_present}</p>
+            <div className="rounded-lg border border-emerald-200 bg-white p-3 shadow-sm">
+              <p className="text-xs font-semibold text-neutral-700">Unique Present</p>
+              <p className="text-2xl font-extrabold text-emerald-800">{retention.unique_children_present}</p>
             </div>
-            <div className="rounded-lg bg-white p-3 shadow-sm">
-              <p className="text-xs text-neutral-600">Retention Rate</p>
-              <p className="text-2xl font-bold text-emerald-700">
+            <div className="rounded-lg border border-emerald-200 bg-white p-3 shadow-sm">
+              <p className="text-xs font-semibold text-neutral-700">Retention Rate</p>
+              <p className="text-2xl font-extrabold text-emerald-800">
                 {retention.retention_rate_pct != null ? `${retention.retention_rate_pct}%` : "—"}
               </p>
               {retention.retention_note ? (
-                <p className="mt-1 text-xs text-neutral-600">{retention.retention_note}</p>
+                <p className="mt-1 text-xs font-medium text-neutral-700">{retention.retention_note}</p>
               ) : null}
             </div>
           </div>
@@ -501,28 +507,28 @@ export function ExecutiveReportView({ data, className, id = "executive-report" }
 
         {/* Insights & Recommendations */}
         <section className="grid gap-4 lg:grid-cols-2 print:break-inside-avoid">
-          <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-5">
-            <div className="flex items-center gap-2 text-indigo-900">
+          <div className="rounded-xl border-2 border-indigo-300 bg-indigo-50 p-5 print:border-neutral-900">
+            <div className="flex items-center gap-2 text-indigo-950">
               <Lightbulb className="h-5 w-5" />
-              <h4 className="font-bold">Key Insights</h4>
+              <h4 className="text-base font-bold">Key Insights</h4>
             </div>
             <ul className="mt-3 space-y-2">
               {summary.key_insights.map((item, i) => (
-                <li key={i} className="flex gap-2 text-sm leading-relaxed text-neutral-800">
+                <li key={i} className="flex gap-2 text-sm font-medium leading-relaxed text-neutral-900">
                   <ArrowUpRight className="mt-0.5 h-4 w-4 shrink-0 text-indigo-600" />
                   <span>{item}</span>
                 </li>
               ))}
             </ul>
           </div>
-          <div className="rounded-xl border border-teal-200 bg-teal-50 p-5">
-            <div className="flex items-center gap-2 text-teal-900">
+          <div className="rounded-xl border-2 border-teal-300 bg-teal-50 p-5 print:border-neutral-900">
+            <div className="flex items-center gap-2 text-teal-950">
               <Target className="h-5 w-5" />
-              <h4 className="font-bold">Recommendations</h4>
+              <h4 className="text-base font-bold">Recommendations</h4>
             </div>
             <ul className="mt-3 space-y-2">
               {summary.recommendations.map((item, i) => (
-                <li key={i} className="flex gap-2 text-sm leading-relaxed text-neutral-800">
+                <li key={i} className="flex gap-2 text-sm font-medium leading-relaxed text-neutral-900">
                   <span className="mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-teal-600 text-xs font-bold text-white">
                     {i + 1}
                   </span>
@@ -533,7 +539,7 @@ export function ExecutiveReportView({ data, className, id = "executive-report" }
           </div>
         </section>
 
-        <footer className="border-t border-neutral-200 pt-4 text-center text-xs text-neutral-500 print:break-inside-avoid">
+        <footer className="border-t-2 border-neutral-300 pt-4 text-center text-sm font-medium text-neutral-700 print:break-inside-avoid">
           Generated by VKMS · Votage Kids Management System · {new Date().toLocaleDateString()}
         </footer>
       </div>
