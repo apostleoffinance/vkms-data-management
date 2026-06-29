@@ -2,6 +2,20 @@
 
 This guide deploys VKMS on a single Ubuntu 22.04/24.04 VM (Oracle Cloud Free Tier or paid shape) with HTTPS, Nginx reverse proxy, and hardened defaults.
 
+> **Prefer managed cloud?** For Neon + Render + Vercel (no VPS maintenance), see [DEPLOYMENT-CLOUD.md](DEPLOYMENT-CLOUD.md).
+
+## Application features (current)
+
+| Feature | Notes |
+|---------|--------|
+| Child check-in/out | Service tags, one row per child per service date |
+| Authorized pickup | Contacts + photos; drop-off/pickup at check-in/out |
+| Executive reports | Admin KPIs, charts, AI summary (optional `GEMINI_API_KEY`) |
+| Worker kiosk | Roster attendance without login |
+| Migrations | Alembic 001–006 — applied automatically on backend start |
+
+---
+
 ## Architecture
 
 ```
@@ -139,8 +153,12 @@ Required `.env` values:
 | `POSTGRES_PASSWORD` | strong random |
 | `JWT_SECRET_KEY` | strong random |
 | `DEFAULT_ADMIN_PASSWORD` | strong random |
+| `GEMINI_API_KEY` | *(optional)* AI executive report summaries |
+| `GEMINI_MODEL` | `gemini-2.5-flash` *(optional)* |
 
 Set `CERTBOT_STAGING=1` for a dry run first, then `0` for real certs.
+
+> **Photos:** Authorized pickup photos are stored in PostgreSQL (`authorized_pickup_contacts.photo_data`). Plan disk usage accordingly on small VMs.
 
 ### Build and start
 
@@ -168,6 +186,25 @@ curl "https://${BACKEND_DOMAIN}/health"
 
 Use the credentials from `.env` (`DEFAULT_ADMIN_EMAIL` / `DEFAULT_ADMIN_PASSWORD`). Change the password on first login.
 
+### Verify migrations and seed
+
+On first boot, the backend runs `alembic upgrade head` and `scripts/seed.py` (same as Render's `start.sh` in cloud deploys).
+
+```bash
+docker compose -f docker-compose.prod.yml logs backend | tail -50
+```
+
+Expected log lines: `Running database migrations...` then `Starting API on port...`
+
+Check health:
+
+```bash
+curl "https://${BACKEND_DOMAIN}/health"
+curl "https://${BACKEND_DOMAIN}/api/docs"
+```
+
+Current Alembic head: `006_attendance_unique_date`. New migration revision IDs must be **≤ 32 characters**.
+
 ---
 
 ## 4. Operations
@@ -186,6 +223,8 @@ cd /opt/vkms
 git pull
 docker compose -f docker-compose.prod.yml up -d --build
 ```
+
+Migrations run automatically when the backend container starts. After pulling schema changes, watch backend logs for Alembic errors.
 
 If `BACKEND_DOMAIN` or `NEXT_PUBLIC_API_URL` changes, rebuild the frontend:
 
@@ -290,6 +329,11 @@ rclone sync /var/backups/vkms remote:vkms-backups
 | Frontend can't reach API | Rebuild frontend after changing `BACKEND_DOMAIN` |
 | 502 Bad Gateway | Wait for backend health check: `docker compose ps` |
 | CORS errors | `CORS_ORIGINS` must exactly match `https://FRONTEND_DOMAIN` |
+| `relation does not exist` | Migrations failed — check backend logs for `alembic upgrade head` |
+| Alembic `StringDataRightTruncation` | Revision ID too long — keep Alembic revision strings ≤ 32 chars |
+| Seed / startup crash | Ensure `backend/app/models/__init__.py` imports all model modules |
+| Executive report has no AI text | Set `GEMINI_API_KEY` in `.env`; template fallback used if unset |
+| PDF report text faint | In browser, use **Print / Save PDF** on Reports page; enable “Background graphics” |
 
 ---
 

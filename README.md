@@ -11,7 +11,10 @@ A children church attendance and check-in/check-out management system for Votage
 - Register children and link them to parents/guardians
 - Check children in and out per church service
 - Assign **service tags** at check-in (sequential per service, e.g. 001, 002 — not permanent child IDs)
-- Admin dashboard, reports, and bulk Excel import
+- **Authorized pickup contacts** with photos — select who dropped off / picked up at check-in and check-out
+- **One attendance row per child per service date** — prevents duplicate check-in/check-out
+- Admin dashboard with charts, reports, and bulk Excel import
+- **Executive ministry reports** — AI-powered KPIs, retention, charts, follow-up list (admin)
 - **Worker roster** attendance (admin kiosk — workers tap their name, no login required)
 - Audit logging and role-based access control
 
@@ -68,7 +71,7 @@ All services on one Ubuntu VM behind Nginx with Let's Encrypt. See [deploy/DEPLO
 
 | Role | Access |
 |------|--------|
-| **Admin** | Full access — users, services, children, reports, worker roster, worker attendance kiosk |
+| **Admin** | Full access — users, services, children, reports, executive reports, worker roster, worker attendance kiosk |
 | **Worker** (login account) | Child check-in/out, search children |
 
 **Worker roster** (separate from login accounts): names used on the shared **Worker Attendance** screen. Managed under **Manage Workers**; no user account required.
@@ -190,6 +193,8 @@ Never commit real secrets. Use platform dashboards or local `.env` files (gitign
 | `COOKIE_SAMESITE` | `lax` | `none` (required for Vercel ↔ Render cross-origin) |
 | `DEFAULT_ADMIN_EMAIL` | See `.env.example` | Your admin email |
 | `DEFAULT_ADMIN_PASSWORD` | See `.env.example` | Strong password (set only in Render env) |
+| `GEMINI_API_KEY` | Optional | Optional — AI executive report summaries ([Google AI Studio](https://aistudio.google.com)) |
+| `GEMINI_MODEL` | `gemini-2.5-flash` | Gemini model name |
 
 ### Frontend
 
@@ -198,6 +203,8 @@ Never commit real secrets. Use platform dashboards or local `.env` files (gitign
 | `NEXT_PUBLIC_API_URL` | `http://localhost:8000` | `https://your-api.onrender.com` |
 
 > `NEXT_PUBLIC_API_URL` is embedded at **build time** on Vercel. After changing it, **redeploy** the frontend.
+
+See [.env.cloud.example](.env.cloud.example) for a full cloud env checklist.
 
 ### Render-specific
 
@@ -266,8 +273,10 @@ docker compose -f docker-compose.prod.yml up -d --build
 ## Database
 
 - **Version:** PostgreSQL 16 (Docker image `postgres:16-alpine`)
-- **Migrations:** Alembic — `backend/alembic/versions/`
+- **Migrations:** Alembic — `backend/alembic/versions/` (001–006)
 - **Seed:** `backend/scripts/seed.py` (idempotent — safe on every deploy; creates admin only if missing)
+
+> **Alembic note:** Revision IDs must be **≤ 32 characters** (`alembic_version.version_num` is `VARCHAR(32)`).
 
 ```bash
 # Run migrations manually (local)
@@ -276,6 +285,17 @@ cd backend && alembic upgrade head
 # Create new migration after model changes
 alembic revision --autogenerate -m "describe change"
 ```
+
+Current migration chain:
+
+| Revision | Purpose |
+|----------|---------|
+| 001 | Initial schema |
+| 002 | Workers roster |
+| 003 | Unique service name + date |
+| 004 | One service per calendar date |
+| 005 | Authorized pickup contacts + attendance FKs |
+| 006 | `service_date` on attendance + unique constraint per child/date |
 
 ### Main tables
 
@@ -286,8 +306,9 @@ alembic revision --autogenerate -m "describe change"
 | `parents` | Parent/guardian records |
 | `children` | Registered children (`VK-#####` codes) |
 | `classes` | Age-based class groups |
-| `services` | Church service sessions |
-| `attendance` | Child check-in/out per service (includes service tag) |
+| `services` | Church service sessions (one per date) |
+| `attendance` | Child check-in/out per service (tag, `service_date`, pickup contacts) |
+| `authorized_pickup_contacts` | Approved pickup people + photos per child |
 | `worker_attendance` | Worker presence per service |
 | `audit_logs` | Security audit trail |
 
@@ -308,6 +329,26 @@ Registration can match an existing parent by phone number to attach siblings wit
 
 Admin opens **Worker Attendance** on a shared device. Workers search their name in a dropdown and mark present — no individual login.
 
+### Authorized pickup
+
+Each child can have multiple **authorized pickup contacts** (primary parent/guardian plus others). Photos are stored in the database. At check-in, staff select who dropped the child off; at check-out, they verify who is picking up.
+
+### Executive reports (admin)
+
+On **Reports**, admins can generate an **Executive Report** with:
+
+- KPIs (attendance, check-in rate, workers, growth)
+- Retention analysis and class breakdown charts
+- Follow-up list for children absent 2+ consecutive services
+- AI-written summary, insights, and recommendations (Gemini — optional; template fallback if no API key)
+
+Export options:
+
+- **Print / Save PDF** — colorful HTML report from the browser (recommended)
+- **Basic PDF** — server-generated PDF via ReportLab
+
+Set `GEMINI_API_KEY` on the backend for AI summaries. See [backend/.env.example](backend/.env.example).
+
 ---
 
 ## API overview
@@ -321,10 +362,15 @@ Interactive docs: `/api/docs` (Swagger) when the backend is running.
 | GET | `/api/v1/auth/me` | Current user |
 | GET | `/api/v1/children/search?q=` | Search children |
 | POST | `/api/v1/children` | Register child |
-| POST | `/api/v1/attendance/check-in` | Check in child (assigns tag) |
-| POST | `/api/v1/attendance/check-out` | Check out child |
+| POST | `/api/v1/attendance/check-in` | Check in child (assigns tag, records drop-off contact) |
+| POST | `/api/v1/attendance/check-out` | Check out child (records pickup contact) |
 | GET | `/api/v1/dashboard/stats` | Dashboard stats |
-| GET | `/api/v1/reports/export` | Export reports |
+| GET | `/api/v1/dashboard/charts` | Dashboard chart data |
+| GET | `/api/v1/reports/executive` | Executive report preview (admin) |
+| GET | `/api/v1/reports/executive/export` | Executive report PDF (admin) |
+| GET | `/api/v1/reports/export` | Export attendance/worker reports (CSV/Excel/PDF) |
+| GET | `/api/v1/authorized-pickups/children/{id}` | List pickup contacts for a child |
+| POST | `/api/v1/authorized-pickups/children/{id}` | Add pickup contact |
 | GET | `/api/v1/workers` | Worker roster |
 | POST | `/api/v1/worker-attendance` | Mark worker present |
 
@@ -383,8 +429,12 @@ Upload `.xlsx` (admin only) via UI or `POST /api/v1/children/bulk-import`.
 | Login shows "Failed to fetch" | Set `NEXT_PUBLIC_API_URL` on Vercel and **redeploy**; set `CORS_ORIGINS` + `COOKIE_SAMESITE=none` on Render |
 | Login loops on phone/iPad | Deploy latest code (Bearer token auth); clear site data and retry |
 | Render build fails on `pydantic-core` | Set `PYTHON_VERSION=3.12.8` on Render |
+| Alembic migration fails on deploy | Check Render logs; revision IDs must be ≤ 32 chars; see migration table above |
+| Seed fails after deploy | Ensure all models are imported in `backend/app/models/__init__.py` |
 | Slow first request | Render free cold start — use UptimeRobot or upgrade plan |
 | CORS errors | Vercel URL in `CORS_ORIGINS` must match exactly (no trailing slash) |
+| Executive report has no AI text | Set `GEMINI_API_KEY` on Render; template summary used if unset |
+| PDF report text hard to read | Use **Print / Save PDF** (browser); enable “Background graphics” in print dialog |
 
 ---
 
@@ -397,14 +447,14 @@ Upload `.xlsx` (admin only) via UI or `POST /api/v1/children/bulk-import`.
 │   │   ├── core/             # Auth, dependencies
 │   │   ├── models/           # SQLAlchemy models
 │   │   ├── schemas/          # Pydantic schemas
-│   │   └── services/         # Business logic
-│   ├── alembic/              # Migrations
+│   │   └── services/         # Business logic (analytics, AI, pickup, reports)
+│   ├── alembic/              # Migrations (001–006)
 │   ├── scripts/seed.py       # Idempotent seed
 │   ├── start.sh              # Cloud startup (migrate + seed + uvicorn)
 │   └── Dockerfile
 ├── frontend/
 │   ├── src/app/              # Next.js App Router pages
-│   ├── src/components/       # UI components
+│   ├── src/components/       # UI components (dashboard, pickup, reports)
 │   ├── src/lib/api.ts        # API client
 │   └── vercel.json
 ├── deploy/
