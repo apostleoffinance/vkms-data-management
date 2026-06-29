@@ -5,13 +5,17 @@ from fastapi import APIRouter, HTTPException, status
 from sqlalchemy.orm import joinedload
 
 from app.core.deps import AdminUser, DbSession, VerifiedUser
+from app.models.service import Service
 from app.models.worker import Worker
 from app.models.worker_attendance import WorkerAttendance
 from app.schemas.attendance import WorkerAttendanceRequest, WorkerAttendanceResponse
 from app.services.audit import log_audit
-from app.services.child_service import get_or_create_today_service
 
 router = APIRouter()
+
+SERVICE_REQUIRED_MESSAGE = (
+    "No service selected. Choose or create a service for today in Service Management."
+)
 
 
 @router.get("", response_model=list[WorkerAttendanceResponse])
@@ -50,14 +54,12 @@ def mark_worker_attendance(
     if not worker:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Worker not found")
 
-    if body.service_id:
-        from app.models.service import Service
+    if not body.service_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=SERVICE_REQUIRED_MESSAGE)
 
-        service = db.query(Service).filter(Service.id == uuid.UUID(body.service_id)).first()
-        if not service:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Service not found")
-    else:
-        service = get_or_create_today_service(db)
+    service = db.query(Service).filter(Service.id == uuid.UUID(body.service_id)).first()
+    if not service:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Service not found")
 
     existing = (
         db.query(WorkerAttendance)

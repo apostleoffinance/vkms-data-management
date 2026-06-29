@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 
 import { Label } from "@/components/ui/label";
@@ -35,7 +36,21 @@ export function ServiceSelector({ value, onChange, label = "Service" }: ServiceS
   }
 
   if (services.length === 0) {
-    return null;
+    return (
+      <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 space-y-2">
+        <p className="text-sm font-medium text-amber-900">No service scheduled for today</p>
+        <p className="text-sm text-amber-800">
+          An admin must create or schedule today&apos;s service before check-in, check-out, or worker
+          attendance can begin.
+        </p>
+        <Link
+          href="/admin/services"
+          className="inline-block text-sm font-medium text-primary underline underline-offset-2"
+        >
+          Go to Service Management
+        </Link>
+      </div>
+    );
   }
 
   const selected = value || services[0]?.id;
@@ -64,11 +79,19 @@ export function ServiceSelector({ value, onChange, label = "Service" }: ServiceS
   );
 }
 
-export function useDefaultServiceId() {
-  const { data: services = [] } = useQuery({
+export function useTodayServices() {
+  return useQuery({
     queryKey: ["services-today"],
     queryFn: () => apiGet<Service[]>("/api/v1/services/today/all"),
   });
+}
 
+export function useDefaultServiceId() {
+  const { data: services = [] } = useTodayServices();
   return services[0]?.id ?? "";
+}
+
+export function useHasTodayService() {
+  const { data: services = [], isLoading } = useTodayServices();
+  return { hasService: services.length > 0, isLoading };
 }

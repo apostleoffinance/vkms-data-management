@@ -3,13 +3,14 @@
 import { Suspense, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
-import { Search } from "lucide-react";
+import { Search, User } from "lucide-react";
+import Link from "next/link";
 import { toast } from "sonner";
 import { QRCodeSVG } from "qrcode.react";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { AuthorizedPickupPhoto } from "@/components/pickup/authorized-pickup-photo";
-import { ServiceSelector, useDefaultServiceId } from "@/components/services/service-selector";
+import { ServiceSelector, useDefaultServiceId, useHasTodayService } from "@/components/services/service-selector";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -23,6 +24,7 @@ import {
 } from "@/components/ui/select";
 import { EmptyState, PageLoader } from "@/components/ui/loading";
 import { apiGet, apiPost, ApiError } from "@/lib/api";
+import { useAuth } from "@/contexts/auth-context";
 import type { AuthorizedPickupContact, ChildDetail, ChildSearchResult, TagPrint } from "@/types";
 
 export default function CheckInPage() {
@@ -41,6 +43,8 @@ export default function CheckInPage() {
 
 function CheckInContent() {
   const searchParams = useSearchParams();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
   const preselectedChildId = searchParams.get("child");
 
   const [query, setQuery] = useState("");
@@ -50,6 +54,7 @@ function CheckInContent() {
   const [pendingChild, setPendingChild] = useState<ChildSearchResult | null>(null);
   const [droppedOffContactId, setDroppedOffContactId] = useState("");
   const defaultServiceId = useDefaultServiceId();
+  const { hasService } = useHasTodayService();
 
   useEffect(() => {
     if (defaultServiceId) {
@@ -151,9 +156,19 @@ function CheckInContent() {
           {child.child_code} · {child.class_name} · {child.parent_name} ({child.parent_phone})
         </p>
       </div>
-      <Button onClick={() => startCheckIn(child)} disabled={checkingIn === child.id}>
-        Check In
-      </Button>
+      <div className="flex flex-wrap gap-2 shrink-0">
+        {isAdmin && (
+          <Button variant="outline" size="sm" asChild>
+            <Link href={`/children/${child.id}#pickup`}>
+              <User className="h-4 w-4 mr-1" />
+              Pickup photos
+            </Link>
+          </Button>
+        )}
+        <Button onClick={() => startCheckIn(child)} disabled={!hasService || checkingIn === child.id}>
+          Check In
+        </Button>
+      </div>
     </div>
   );
 
@@ -249,7 +264,19 @@ function CheckInContent() {
                               <p className="text-sm text-muted-foreground">{selected.relationship}</p>
                               <p className="text-sm text-muted-foreground">{selected.phone}</p>
                               {!selected.has_photo && (
-                                <p className="text-xs text-amber-600 mt-1">No photo on file — verify ID manually</p>
+                                <div className="mt-2 space-y-1">
+                                  <p className="text-xs text-amber-600">
+                                    No photo on file — verify ID manually
+                                  </p>
+                                  {isAdmin && pendingChild && (
+                                    <Link
+                                      href={`/children/${pendingChild.id}#pickup`}
+                                      className="text-xs font-medium text-primary underline underline-offset-2"
+                                    >
+                                      Add pickup photo now
+                                    </Link>
+                                  )}
+                                </div>
                               )}
                             </div>
                           </>

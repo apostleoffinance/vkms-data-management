@@ -131,3 +131,6 @@ class ChildSearchResult(BaseModel):
     parent_name: str
     parent_phone: str
     is_active: bool
+    pickup_contact_count: int = 0
+    pickup_photo_count: int = 0
+    has_pickup_photo: bool = False

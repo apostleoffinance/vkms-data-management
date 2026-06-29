@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -45,6 +45,12 @@ export default function ChildProfilePage({ params }: { params: Promise<{ id: str
     queryFn: () => apiGet<AttendanceRecord[]>(`/api/v1/attendance?child_id=${id}`),
     enabled: !!id,
   });
+
+  useEffect(() => {
+    if (!child || typeof window === "undefined" || window.location.hash !== "#pickup") return;
+    const el = document.getElementById("pickup");
+    el?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [child?.id]);
 
   const setActive = async (isActive: boolean) => {
     setUpdating(true);

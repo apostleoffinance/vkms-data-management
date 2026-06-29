@@ -58,11 +58,30 @@ def _child_response(child: Child, parent_linked: bool = False) -> ChildResponse:
 
 @router.get("/search", response_model=list[ChildSearchResult])
 def search(
-    q: str = Query(min_length=1),
+    q: str = Query(default="", max_length=100),
+    missing_photos: bool = Query(default=False),
+    include_inactive: bool = Query(default=False),
+    limit: int = Query(default=50, ge=1, le=100),
     db: DbSession = ...,
     current_user: VerifiedUser = ...,
 ) -> list[ChildSearchResult]:
-    results = search_children(db, q)
+    if missing_photos and current_user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admins can filter by missing pickup photos",
+        )
+    if include_inactive and current_user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admins can include inactive children",
+        )
+    results = search_children(
+        db,
+        q,
+        limit=limit,
+        include_inactive=include_inactive,
+        missing_photos_only=missing_photos,
+    )
     return [ChildSearchResult(**r) for r in results]
 
 

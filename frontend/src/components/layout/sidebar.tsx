@@ -27,6 +27,7 @@ const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: Home, roles: ["admin", "worker"] },
   { href: "/attendance/check-in", label: "Check In", icon: UserCheck, roles: ["admin", "worker"] },
   { href: "/attendance/check-out", label: "Check Out", icon: ClipboardList, roles: ["admin", "worker"] },
+  { href: "/children", label: "Children", icon: Users, roles: ["admin", "worker"] },
   { href: "/worker-attendance", label: "Worker Attendance", icon: CalendarCheck, roles: ["admin"] },
   { href: "/children/new", label: "Register Child", icon: UserPlus, roles: ["admin"] },
   { href: "/admin/bulk-import", label: "Bulk Import", icon: Upload, roles: ["admin"] },

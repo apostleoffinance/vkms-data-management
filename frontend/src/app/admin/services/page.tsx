@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Trash2 } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
@@ -27,7 +27,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { apiDelete, apiGet, apiPost } from "@/lib/api";
+import { apiDelete, apiGet, apiPost, apiPut } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
 import type { Service } from "@/types";
 import { useAuth } from "@/contexts/auth-context";
@@ -50,6 +50,9 @@ export default function ServicesPage() {
   const [creating, setCreating] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Service | null>(null);
+  const [editingService, setEditingService] = useState<Service | null>(null);
+  const [editName, setEditName] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const { data: types } = useQuery({
     queryKey: ["service-types"],
@@ -100,9 +103,11 @@ export default function ServicesPage() {
       return;
     }
 
-    const dateTaken = services.some((s) => s.service_date === serviceDate);
-    if (dateTaken) {
-      toast.error("A service is already scheduled for this date");
+    const existing = services.find((s) => s.service_date === serviceDate);
+    if (existing) {
+      toast.error(
+        `A service already exists for this date: "${existing.service_name}". Rename it or pick another date.`,
+      );
       return;
     }
 
@@ -120,6 +125,31 @@ export default function ServicesPage() {
       toast.error(err instanceof Error ? err.message : "Failed to create service");
     } finally {
       setCreating(false);
+    }
+  };
+
+  const openEdit = (service: Service) => {
+    setEditingService(service);
+    setEditName(service.service_name);
+  };
+
+  const handleRename = async () => {
+    if (!editingService) return;
+    const name = editName.trim();
+    if (!name) {
+      toast.error("Service name is required");
+      return;
+    }
+    setSavingEdit(true);
+    try {
+      await apiPut(`/api/v1/services/${editingService.id}`, { service_name: name });
+      toast.success("Service renamed");
+      invalidateServices();
+      setEditingService(null);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to rename service");
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -145,8 +175,8 @@ export default function ServicesPage() {
           <div>
             <h1 className="text-3xl font-bold">Service Management</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Only one service can be scheduled per date. {defaultService} is auto-created on days
-              with no scheduled service.
+              Schedule one service per date. Create today&apos;s service before check-in — nothing is
+              auto-created.
             </p>
           </div>
           <Button
@@ -164,7 +194,8 @@ export default function ServicesPage() {
             <CardHeader>
               <CardTitle>New Service</CardTitle>
               <CardDescription>
-                Schedule a service for a specific date. That date cannot have another service.
+                Schedule a service for a specific date. Only one service is allowed per calendar
+                date.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -185,7 +216,7 @@ export default function ServicesPage() {
                       {presets.map((preset) => (
                         <SelectItem key={preset} value={preset}>
                           {preset}
-                          {preset === defaultService ? " (default)" : ""}
+                          {preset === defaultService ? " (default preset)" : ""}
                         </SelectItem>
                       ))}
                       <SelectItem value={CUSTOM_TYPE}>Custom...</SelectItem>
@@ -242,16 +273,26 @@ export default function ServicesPage() {
                       <span className="font-medium">{s.service_name}</span>
                       <p className="text-sm text-muted-foreground mt-1">{formatDate(s.service_date)}</p>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="text-destructive hover:text-destructive shrink-0"
-                      disabled={deletingId === s.id}
-                      onClick={() => setConfirmDelete(s)}
-                      aria-label={`Delete ${s.service_name}`}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    <div className="flex gap-1 shrink-0">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => openEdit(s)}
+                        aria-label={`Rename ${s.service_name}`}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-destructive hover:text-destructive"
+                        disabled={deletingId === s.id}
+                        onClick={() => setConfirmDelete(s)}
+                        aria-label={`Delete ${s.service_name}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -265,8 +306,8 @@ export default function ServicesPage() {
               <AlertDialogTitle>Delete service?</AlertDialogTitle>
               <AlertDialogDescription>
                 Delete {confirmDelete?.service_name} on{" "}
-                {confirmDelete ? formatDate(confirmDelete.service_date) : ""}? This is only allowed if
-                no children or workers have been checked in for this service.
+                {confirmDelete ? formatDate(confirmDelete.service_date) : ""}? You can delete after
+                all children are checked out. Attendance history for this service will be removed.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -276,6 +317,34 @@ export default function ServicesPage() {
                 onClick={handleDelete}
               >
                 {deletingId ? "Deleting..." : "Delete Service"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <AlertDialog open={!!editingService} onOpenChange={(open) => !open && setEditingService(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Rename service</AlertDialogTitle>
+              <AlertDialogDescription>
+                {editingService
+                  ? `Update the name for ${formatDate(editingService.service_date)}`
+                  : ""}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="py-2">
+              <Label htmlFor="edit-service-name">Service name</Label>
+              <Input
+                id="edit-service-name"
+                className="mt-2"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+              />
+            </div>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleRename} disabled={savingEdit}>
+                {savingEdit ? "Saving..." : "Save"}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

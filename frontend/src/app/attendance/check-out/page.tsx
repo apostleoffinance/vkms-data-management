@@ -7,7 +7,7 @@ import { toast } from "sonner";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { AuthorizedPickupPhoto } from "@/components/pickup/authorized-pickup-photo";
-import { ServiceSelector, useDefaultServiceId } from "@/components/services/service-selector";
+import { ServiceSelector, useDefaultServiceId, useHasTodayService } from "@/components/services/service-selector";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -46,6 +46,7 @@ export default function CheckOutPage() {
   const [serviceId, setServiceId] = useState("");
   const [pickedUpContactId, setPickedUpContactId] = useState("");
   const defaultServiceId = useDefaultServiceId();
+  const { hasService } = useHasTodayService();
 
   useEffect(() => {
     if (defaultServiceId) {
@@ -184,7 +185,7 @@ export default function CheckOutPage() {
                     onKeyDown={(e) => e.key === "Enter" && lookup()}
                   />
                 </div>
-                <Button onClick={lookup} disabled={loading || isFetching}>
+                <Button onClick={lookup} disabled={!hasService || loading || isFetching}>
                   {loading || isFetching ? "Looking up..." : "Lookup"}
                 </Button>
               </div>

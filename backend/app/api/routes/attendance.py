@@ -18,10 +18,27 @@ from app.schemas.attendance import (
     TagPrintResponse,
 )
 from app.services.audit import log_audit
-from app.services.child_service import get_next_tag_number, get_or_create_today_service
+from app.services.child_service import get_next_tag_number
 from app.services.pickup_service import ensure_primary_contact_from_parent, get_contact_for_child
 
 router = APIRouter()
+
+SERVICE_REQUIRED_MESSAGE = (
+    "No service selected. Choose or create a service for today in Service Management."
+)
+
+
+def _resolve_service(db: DbSession, service_id: str | None) -> Service:
+    if not service_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=SERVICE_REQUIRED_MESSAGE)
+    try:
+        service_uuid = uuid.UUID(service_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid service id") from exc
+    service = db.query(Service).filter(Service.id == service_uuid).first()
+    if not service:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Service not found")
+    return service
 
 
 def _attendance_query(db: DbSession):
@@ -32,15 +49,6 @@ def _attendance_query(db: DbSession):
         joinedload(Attendance.dropped_off_contact),
         joinedload(Attendance.picked_up_contact),
     )
-
-
-def _resolve_service(db: DbSession, service_id: str | None):
-    if service_id:
-        service = db.query(Service).filter(Service.id == uuid.UUID(service_id)).first()
-        if not service:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Service not found")
-        return service
-    return get_or_create_today_service(db)
 
 
 def _child_attendance_on_date(db: DbSession, child_id: uuid.UUID, service_date) -> Attendance | None:
@@ -164,10 +172,7 @@ def check_in(body: CheckInRequest, db: DbSession, current_user: VerifiedUser) ->
     if not child:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Child not found")
 
-    if body.service_id:
-        service = _resolve_service(db, body.service_id)
-    else:
-        service = get_or_create_today_service(db)
+    service = _resolve_service(db, body.service_id)
 
     existing = _child_attendance_on_date(db, child.id, service.service_date)
     if existing:

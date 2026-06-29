@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.constants import CLASS_IMPORT_ALIASES, DEFAULT_CLASS_NAME, DEFAULT_SERVICE_NAME
 from app.models.attendance import Attendance
+from app.models.authorized_pickup_contact import AuthorizedPickupContact
 from app.models.child import Child, Gender
 from app.models.class_model import Class
 from app.models.parent import Parent
@@ -193,24 +194,8 @@ def get_service_for_date(db: Session, target: date) -> Service | None:
     )
 
 
-def get_or_create_today_service(db: Session, service_name: str = DEFAULT_SERVICE_NAME) -> Service:
-    today = date.today()
-    existing = get_service_for_date(db, today)
-    if existing:
-        return existing
-
-    service = Service(service_name=service_name, service_date=today)
-    db.add(service)
-    try:
-        db.commit()
-        db.refresh(service)
-    except IntegrityError:
-        db.rollback()
-        existing = get_service_for_date(db, today)
-        if not existing:
-            raise
-        return existing
-    return service
+def get_service_by_id(db: Session, service_id: uuid.UUID) -> Service | None:
+    return db.query(Service).filter(Service.id == service_id).first()
 
 
 def get_next_tag_number(db: Session, service_id: uuid.UUID) -> str:
@@ -219,39 +204,86 @@ def get_next_tag_number(db: Session, service_id: uuid.UUID) -> str:
     return f"{count + 1:03d}"
 
 
-def search_children(db: Session, query: str, limit: int = 20) -> list[dict]:
-    search_term = f"%{query.strip()}%"
-    children = (
+def _pickup_stats_by_child_id(db: Session, child_ids: list[uuid.UUID]) -> dict[uuid.UUID, tuple[int, int]]:
+    if not child_ids:
+        return {}
+    contacts = (
+        db.query(AuthorizedPickupContact)
+        .filter(AuthorizedPickupContact.child_id.in_(child_ids))
+        .all()
+    )
+    stats: dict[uuid.UUID, list[int]] = {}
+    for contact in contacts:
+        bucket = stats.setdefault(contact.child_id, [0, 0])
+        bucket[0] += 1
+        if contact.has_photo:
+            bucket[1] += 1
+    return {child_id: (counts[0], counts[1]) for child_id, counts in stats.items()}
+
+
+def search_children(
+    db: Session,
+    query: str = "",
+    limit: int = 50,
+    include_inactive: bool = False,
+    missing_photos_only: bool = False,
+) -> list[dict]:
+    base_query = (
         db.query(Child)
         .join(Parent)
         .join(Class)
-        .filter(
-            Child.is_active.is_(True),
+        .options(joinedload(Child.parent), joinedload(Child.class_))
+    )
+    if not include_inactive:
+        base_query = base_query.filter(Child.is_active.is_(True))
+
+    trimmed = query.strip()
+    if trimmed:
+        search_term = f"%{trimmed}%"
+        base_query = base_query.filter(
             or_(
                 Child.first_name.ilike(search_term),
                 Child.last_name.ilike(search_term),
                 Child.child_code.ilike(search_term),
+                Parent.first_name.ilike(search_term),
+                Parent.last_name.ilike(search_term),
                 Parent.phone.ilike(search_term),
                 func.concat(Child.first_name, " ", Child.last_name).ilike(search_term),
             ),
         )
-        .options(joinedload(Child.parent), joinedload(Child.class_))
-        .limit(limit)
+
+    fetch_limit = limit * 4 if missing_photos_only else limit
+    children = (
+        base_query.order_by(Child.first_name, Child.last_name)
+        .limit(fetch_limit)
         .all()
     )
-    return [
-        {
-            "id": str(c.id),
-            "child_code": c.child_code,
-            "first_name": c.first_name,
-            "last_name": c.last_name,
-            "class_name": c.class_.name,
-            "parent_name": c.parent.full_name,
-            "parent_phone": c.parent.phone,
-            "is_active": c.is_active,
-        }
-        for c in children
-    ]
+    stats = _pickup_stats_by_child_id(db, [child.id for child in children])
+
+    results: list[dict] = []
+    for child in children:
+        contact_count, photo_count = stats.get(child.id, (0, 0))
+        has_pickup_photo = photo_count > 0
+        if missing_photos_only and has_pickup_photo:
+            continue
+        results.append(
+            {
+                "id": str(child.id),
+                "child_code": child.child_code,
+                "first_name": child.first_name,
+                "last_name": child.last_name,
+                "class_name": child.class_.name,
+                "parent_name": child.parent.full_name,
+                "parent_phone": child.parent.phone,
+                "is_active": child.is_active,
+                "pickup_contact_count": contact_count,
+                "pickup_photo_count": photo_count,
+                "has_pickup_photo": has_pickup_photo,
+            }
+        )
+        if len(results) >= limit:
+            break
+    return results
 
 
 def get_child_detail(db: Session, child_id: uuid.UUID) -> dict | None:

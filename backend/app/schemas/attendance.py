@@ -8,6 +8,10 @@ class ServiceCreate(BaseModel):
     service_date: date
 
 
+class ServiceUpdate(BaseModel):
+    service_name: str = Field(min_length=1, max_length=100)
+
+
 class ServiceResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

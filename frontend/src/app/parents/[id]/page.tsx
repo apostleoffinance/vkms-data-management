@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageLoader } from "@/components/ui/loading";
 import { apiGet } from "@/lib/api";
@@ -43,14 +44,18 @@ export default function ParentDetailPage({ params }: { params: Promise<{ id: str
             <CardHeader><CardTitle>Children</CardTitle></CardHeader>
             <CardContent className="space-y-2">
               {parent.children.map((child) => (
-                <Link
+                <div
                   key={child.id}
-                  href={`/children/${child.id}`}
-                  className="flex justify-between rounded-lg border p-3 hover:bg-accent/50"
+                  className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between hover:bg-accent/50"
                 >
-                  <span>{child.full_name} ({child.child_code})</span>
-                  <span className="text-sm text-muted-foreground">{child.class_name}</span>
-                </Link>
+                  <Link href={`/children/${child.id}`} className="flex justify-between flex-1 min-w-0">
+                    <span>{child.full_name} ({child.child_code})</span>
+                    <span className="text-sm text-muted-foreground">{child.class_name}</span>
+                  </Link>
+                  <Button variant="outline" size="sm" asChild className="shrink-0">
+                    <Link href={`/children/${child.id}#pickup`}>Pickup photos</Link>
+                  </Button>
+                </div>
               ))}
             </CardContent>
           </Card>

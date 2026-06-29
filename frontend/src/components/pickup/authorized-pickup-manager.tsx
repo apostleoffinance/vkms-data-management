@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { AuthorizedPickupPhoto } from "@/components/pickup/authorized-pickup-photo";
 import { PhotoCapture } from "@/components/pickup/photo-capture";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiDelete, apiGet, apiPost, apiUpload } from "@/lib/api";
@@ -91,9 +91,16 @@ export function AuthorizedPickupManager({ childId, readOnly = false }: Authorize
   };
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle>Authorized Pickup</CardTitle>
+    <Card id="pickup" className="scroll-mt-6">
+      <CardHeader className="flex flex-row items-center justify-between gap-4">
+        <div>
+          <CardTitle>Authorized Pickup</CardTitle>
+          <CardDescription className="mt-1">
+            {readOnly
+              ? "People approved to drop off or pick up this child."
+              : "Add photos of parents and guardians for check-in verification. Tap Add photo on each contact."}
+          </CardDescription>
+        </div>
         {!readOnly && (
           <Button variant="outline" size="sm" onClick={() => setAdding((v) => !v)}>
             <Plus className="h-4 w-4 mr-1" /> Add contact

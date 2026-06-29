@@ -18,6 +18,9 @@ export interface ChildSearchResult {
   parent_name: string;
   parent_phone: string;
   is_active: boolean;
+  pickup_contact_count?: number;
+  pickup_photo_count?: number;
+  has_pickup_photo?: boolean;
 }
 
 export interface ChildDetail {

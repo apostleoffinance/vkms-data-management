@@ -30,6 +30,13 @@ const actions = [
     primary: true,
   },
   {
+    href: "/children",
+    label: "Children",
+    description: "Search & pickup photos",
+    icon: Users,
+    roles: ["admin", "worker"],
+  },
+  {
     href: "/children/new",
     label: "Register Child",
     description: "Add new child & parent",
