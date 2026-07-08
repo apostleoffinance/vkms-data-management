@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Trash2 } from "lucide-react";
+import { Copy, Download, ExternalLink, Pencil, Printer, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
@@ -30,9 +30,10 @@ import {
 import { apiDelete, apiGet, apiPost, apiPut } from "@/lib/api";
 import { getKioskPageUrl } from "@/lib/kiosk-api";
 import { formatDate } from "@/lib/utils";
+import { BRAND } from "@/lib/brand";
 import type { Service } from "@/types";
 import { useAuth } from "@/contexts/auth-context";
-import { QRCodeSVG } from "qrcode.react";
+import { QRCodeCanvas, QRCodeSVG } from "qrcode.react";
 
 const CUSTOM_TYPE = "custom";
 
@@ -40,6 +41,45 @@ interface ServiceTypesResponse {
   default: string;
   presets: string[];
   allow_custom: boolean;
+}
+
+function CheckInPoster({ value, preview = false }: { value: string; preview?: boolean }) {
+  return (
+    <div
+      className="w-full max-w-[520px] overflow-hidden rounded-3xl border-2 border-black bg-white text-center"
+      style={{ printColorAdjust: "exact", WebkitPrintColorAdjust: "exact" }}
+    >
+      <div className="px-6 py-6" style={{ backgroundColor: BRAND.yellow, color: BRAND.black }}>
+        <p className="text-sm font-bold uppercase tracking-[0.2em]">Votage Kids</p>
+        <h2 className="mt-1 text-3xl font-black">Check In Here</h2>
+      </div>
+      <div className="flex flex-col items-center gap-5 px-6 py-8">
+        <p className="text-lg font-semibold text-black">
+          Scan with your phone camera to check in your child
+        </p>
+        <div className="rounded-2xl border-2 border-black p-4">
+          <QRCodeSVG value={value} size={preview ? 220 : 320} level="M" />
+        </div>
+        <ol className="mx-auto max-w-sm space-y-2 text-left text-base font-medium text-black">
+          <li className="flex gap-3">
+            <span className="font-black">1.</span>
+            <span>Scan this code with your phone camera</span>
+          </li>
+          <li className="flex gap-3">
+            <span className="font-black">2.</span>
+            <span>Enter your phone number (or register a first-time child)</span>
+          </li>
+          <li className="flex gap-3">
+            <span className="font-black">3.</span>
+            <span>Show your tag number at the front desk</span>
+          </li>
+        </ol>
+        <p className="text-sm text-neutral-600">
+          Need help? Please see a Votage Kids team member at the front desk.
+        </p>
+      </div>
+    </div>
+  );
 }
 
 export default function ServicesPage() {
@@ -55,6 +95,37 @@ export default function ServicesPage() {
   const [editingService, setEditingService] = useState<Service | null>(null);
   const [editName, setEditName] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
+  const [kioskUrl, setKioskUrl] = useState("");
+  const qrCanvasRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setKioskUrl(getKioskPageUrl());
+  }, []);
+
+  const handlePrintPoster = () => {
+    window.print();
+  };
+
+  const handleCopyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(kioskUrl);
+      toast.success("Check-in link copied");
+    } catch {
+      toast.error("Could not copy link");
+    }
+  };
+
+  const handleDownloadQr = () => {
+    const canvas = qrCanvasRef.current?.querySelector("canvas");
+    if (!canvas) {
+      toast.error("QR code not ready yet");
+      return;
+    }
+    const link = document.createElement("a");
+    link.download = "votage-kids-checkin-qr.png";
+    link.href = canvas.toDataURL("image/png");
+    link.click();
+  };
 
   const { data: types } = useQuery({
     queryKey: ["service-types"],
@@ -191,33 +262,52 @@ export default function ServicesPage() {
           </Button>
         </div>
 
-        <Card>
+        <Card className="no-print">
           <CardHeader>
-            <CardTitle>Parent check-in kiosk</CardTitle>
+            <CardTitle>Parent check-in poster</CardTitle>
             <CardDescription>
-              Print this QR and mount it at the entrance. One permanent code — parents scan with
-              their phone each Sunday. Staff check-in at the desk still works for anyone without a
-              phone or internet.
+              Print or download the poster below and mount it at the entrance. One permanent QR —
+              parents scan it every service. Staff check-in at the front desk still works for anyone
+              without a phone or internet.
             </CardDescription>
           </CardHeader>
-          <CardContent className="flex flex-col items-start gap-4 sm:flex-row sm:items-start">
-            <QRCodeSVG value={getKioskPageUrl()} size={160} />
-            <div className="space-y-3 text-sm">
-              <p className="font-medium break-all">{getKioskPageUrl()}</p>
-              <ol className="list-decimal space-y-1 pl-4 text-muted-foreground">
-                <li>Parent scans QR on their phone</li>
-                <li>Enter phone number or register a new child</li>
-                <li>Show the tag number at the front desk when dropping off</li>
-                <li>Staff check out using the tag number at pickup</li>
-              </ol>
-              <Button type="button" variant="outline" asChild>
+          <CardContent className="space-y-4">
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" onClick={handlePrintPoster}>
+                <Printer className="mr-2 h-4 w-4" />
+                Print poster
+              </Button>
+              <Button type="button" variant="outline" onClick={handleDownloadQr}>
+                <Download className="mr-2 h-4 w-4" />
+                Download QR (PNG)
+              </Button>
+              <Button type="button" variant="ghost" asChild>
                 <a href="/kiosk" target="_blank" rel="noopener noreferrer">
-                  Open kiosk
+                  <ExternalLink className="mr-2 h-4 w-4" />
+                  Test check-in page
                 </a>
               </Button>
+              <Button type="button" variant="ghost" onClick={handleCopyLink}>
+                <Copy className="mr-2 h-4 w-4" />
+                Copy link
+              </Button>
             </div>
+            <p className="text-xs text-muted-foreground break-all">{kioskUrl}</p>
           </CardContent>
         </Card>
+
+        {/* High-resolution QR used only for PNG download (kept off-screen) */}
+        <div ref={qrCanvasRef} aria-hidden className="pointer-events-none absolute -left-[9999px] top-0">
+          <QRCodeCanvas value={kioskUrl || "/kiosk"} size={1024} marginSize={4} level="M" />
+        </div>
+
+        {/* Parent-facing poster: previewed on screen, the only thing printed */}
+        <div className="flex justify-center no-print">
+          <CheckInPoster value={kioskUrl || "/kiosk"} preview />
+        </div>
+        <div id="checkin-poster" className="hidden print:block">
+          <CheckInPoster value={kioskUrl || "/kiosk"} />
+        </div>
 
         {showForm && (
           <Card>

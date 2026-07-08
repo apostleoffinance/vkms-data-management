@@ -84,7 +84,9 @@ body {
   #printable-tag,
   #printable-tag *,
   #executive-report,
-  #executive-report * {
+  #executive-report *,
+  #checkin-poster,
+  #checkin-poster * {
     visibility: visible;
   }
   #printable-tag,
@@ -93,6 +95,17 @@ body {
     left: 0;
     top: 0;
     width: 100%;
+  }
+  #checkin-poster {
+    position: absolute;
+    left: 0;
+    top: 0;
+    display: flex !important;
+    width: 100%;
+    justify-content: center;
+    padding-top: 2rem;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
   }
   .no-print {
     display: none !important;
