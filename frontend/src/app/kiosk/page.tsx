@@ -2,10 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { format } from "date-fns";
-import { Baby, Phone, QrCode, UserPlus } from "lucide-react";
+import { Baby, Phone, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 
-import { QrScanner } from "@/components/kiosk/qr-scanner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -24,7 +23,6 @@ import {
   KioskApiError,
   kioskGetTodayService,
   kioskLookup,
-  kioskParseQr,
   kioskRegister,
   type KioskChildStatus,
   type KioskLookupResponse,
@@ -32,7 +30,15 @@ import {
   type KioskTagResult,
 } from "@/lib/kiosk-api";
 
-type Screen = "home" | "phone" | "register" | "scan" | "success";
+type Screen = "home" | "phone" | "register" | "success";
+
+function FrontDeskNote() {
+  return (
+    <p className="rounded-lg border border-dashed bg-muted/40 px-4 py-3 text-center text-sm text-muted-foreground">
+      No phone or internet? See the front desk — staff can check your child in and assign a tag.
+    </p>
+  );
+}
 
 export default function KioskPage() {
   const [loading, setLoading] = useState(true);
@@ -42,7 +48,7 @@ export default function KioskPage() {
   const [lookup, setLookup] = useState<KioskLookupResponse | null>(null);
   const [tag, setTag] = useState<KioskTagResult | null>(null);
   const [busy, setBusy] = useState(false);
-  const [manualCode, setManualCode] = useState("");
+  const [lookupFailed, setLookupFailed] = useState(false);
 
   const [registerForm, setRegisterForm] = useState({
     child_first_name: "",
@@ -100,11 +106,12 @@ export default function KioskPage() {
       return;
     }
     setBusy(true);
+    setLookupFailed(false);
     try {
       const result = await kioskLookup(phone.trim());
       if (!result || result.children.length === 0) {
-        toast.error("No children found for this phone number");
         setLookup(null);
+        setLookupFailed(true);
         return;
       }
       setLookup(result);
@@ -138,29 +145,12 @@ export default function KioskPage() {
     }
   };
 
-  const handleQrScan = async (data: string) => {
-    setBusy(true);
-    try {
-      const preview = await kioskParseQr(data);
-      await handleCheckIn(preview.child);
-    } catch (err) {
-      toast.error(err instanceof KioskApiError ? err.message : "QR code not recognized");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleManualCode = async () => {
-    if (!manualCode.trim()) return;
-    await handleQrScan(manualCode.trim());
-  };
-
   const reset = () => {
     setScreen("home");
     setTag(null);
     setLookup(null);
     setPhone("");
-    setManualCode("");
+    setLookupFailed(false);
   };
 
   if (loading) {
@@ -204,9 +194,10 @@ export default function KioskPage() {
             <p className="mt-1 text-lg text-muted-foreground">{tag.class_name}</p>
             <p className="mt-4 text-sm">{tag.service_name}</p>
           </div>
-          <p className="text-lg font-semibold">Show this screen at the front desk</p>
+          <p className="text-lg font-semibold">Show this tag number at the front desk</p>
           <p className="text-sm opacity-80">
-            Check-out is completed by staff when you pick up your child.
+            Keep this screen visible when you drop off. Staff will use this tag number when you
+            pick up your child.
           </p>
           <Button
             type="button"
@@ -237,7 +228,8 @@ export default function KioskPage() {
         {screen === "home" && (
           <>
             <p className="text-center text-muted-foreground">
-              Check in your child and receive a tag to show at the front desk.
+              Enter your phone to check in registered children, or register a first-time visitor.
+              You will receive a tag number to show at the front desk.
             </p>
             <div className="grid gap-3">
               <Button
@@ -265,20 +257,8 @@ export default function KioskPage() {
                   <span className="text-sm font-normal opacity-80">First time visiting</span>
                 </span>
               </Button>
-              <Button
-                type="button"
-                size="lg"
-                variant="outline"
-                className="h-auto justify-start gap-4 py-5"
-                onClick={() => setScreen("scan")}
-              >
-                <QrCode className="h-6 w-6 shrink-0" />
-                <span className="text-left">
-                  <span className="block font-semibold">Scan child QR</span>
-                  <span className="text-sm font-normal opacity-80">Returning families with a card</span>
-                </span>
-              </Button>
             </div>
+            <FrontDeskNote />
           </>
         )}
 
@@ -304,6 +284,22 @@ export default function KioskPage() {
               <Button type="button" className="w-full" disabled={busy} onClick={handlePhoneLookup}>
                 {busy ? "Searching…" : "Find children"}
               </Button>
+              {lookupFailed && (
+                <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm dark:border-amber-900 dark:bg-amber-950/40">
+                  <p>No children found for this phone number.</p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => {
+                      setRegisterForm((f) => ({ ...f, parent_phone: phone.trim() }));
+                      setScreen("register");
+                    }}
+                  >
+                    Register a new child
+                  </Button>
+                </div>
+              )}
               {lookup && (
                 <div className="space-y-3 pt-2">
                   <p className="text-sm text-muted-foreground">
@@ -337,6 +333,7 @@ export default function KioskPage() {
               <Button type="button" variant="ghost" className="w-full" onClick={() => setScreen("home")}>
                 Back
               </Button>
+              <FrontDeskNote />
             </CardContent>
           </Card>
         )}
@@ -451,40 +448,8 @@ export default function KioskPage() {
                 <Button type="button" variant="ghost" className="w-full" onClick={() => setScreen("home")}>
                   Back
                 </Button>
+                <FrontDeskNote />
               </form>
-            </CardContent>
-          </Card>
-        )}
-
-        {screen === "scan" && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <QrCode className="h-5 w-5" />
-                Scan child QR
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <QrScanner
-                onScan={(value) => void handleQrScan(value)}
-                onError={(msg) => toast.error(msg)}
-              />
-              <div className="space-y-2">
-                <Label>Or enter child code</Label>
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="VK-00001"
-                    value={manualCode}
-                    onChange={(e) => setManualCode(e.target.value)}
-                  />
-                  <Button type="button" disabled={busy} onClick={() => void handleManualCode()}>
-                    Go
-                  </Button>
-                </div>
-              </div>
-              <Button type="button" variant="ghost" className="w-full" onClick={() => setScreen("home")}>
-                Back
-              </Button>
             </CardContent>
           </Card>
         )}

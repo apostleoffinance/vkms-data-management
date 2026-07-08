@@ -6,11 +6,12 @@ from PIL import Image
 
 MAX_PHOTO_BYTES = 512_000
 PHOTO_MAX_DIMENSION = 480
+MAX_UPLOAD_BYTES = 15 * 1024 * 1024
 
 
 def process_upload_photo(content: bytes, content_type: str | None) -> tuple[bytes, str]:
-    if len(content) > 2 * 1024 * 1024:
-        raise ValueError("Photo must be under 2MB")
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise ValueError("Photo must be under 15MB")
 
     try:
         with Image.open(io.BytesIO(content)) as img:

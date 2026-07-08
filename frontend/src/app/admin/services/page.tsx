@@ -195,14 +195,21 @@ export default function ServicesPage() {
           <CardHeader>
             <CardTitle>Parent check-in kiosk</CardTitle>
             <CardDescription>
-              Print or display this QR at the entrance. Parents scan to check in and receive a tag
-              on their phone. Check-out remains staff-only at the front desk.
+              Print this QR and mount it at the entrance. One permanent code — parents scan with
+              their phone each Sunday. Staff check-in at the desk still works for anyone without a
+              phone or internet.
             </CardDescription>
           </CardHeader>
-          <CardContent className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
-            <QRCodeSVG value={getKioskPageUrl()} size={140} />
-            <div className="space-y-2 text-sm">
+          <CardContent className="flex flex-col items-start gap-4 sm:flex-row sm:items-start">
+            <QRCodeSVG value={getKioskPageUrl()} size={160} />
+            <div className="space-y-3 text-sm">
               <p className="font-medium break-all">{getKioskPageUrl()}</p>
+              <ol className="list-decimal space-y-1 pl-4 text-muted-foreground">
+                <li>Parent scans QR on their phone</li>
+                <li>Enter phone number or register a new child</li>
+                <li>Show the tag number at the front desk when dropping off</li>
+                <li>Staff check out using the tag number at pickup</li>
+              </ol>
               <Button type="button" variant="outline" asChild>
                 <a href="/kiosk" target="_blank" rel="noopener noreferrer">
                   Open kiosk

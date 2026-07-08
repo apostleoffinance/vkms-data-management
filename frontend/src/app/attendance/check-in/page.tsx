@@ -177,7 +177,9 @@ function CheckInContent() {
       <div className="space-y-6">
         <h1 className="text-3xl font-bold">Check In</h1>
         <p className="text-muted-foreground">
-          Record who dropped off the child, then assign a service tag.
+          Use this screen when checking in at the front desk — for parents without a phone or
+          internet, or when the self-service kiosk is unavailable. Record who dropped off the child,
+          then assign a service tag.
         </p>
 
         <Card>

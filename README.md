@@ -374,13 +374,15 @@ Admin opens **Worker Attendance** on a shared device. Workers search their name 
 
 ### Parent check-in kiosk
 
-Parents use the public **`/kiosk`** page (no login). Admins can open it from the sidebar or print the QR on **Services**.
+Print **one permanent facility QR** from **Services** and mount it at the entrance. Parents scan it with their phone each Sunday — no per-child QR needed at the stand.
 
 1. Ensure **today's service** exists (Services → Add Service).
-2. Parent opens `/kiosk` (or scans the facility QR).
+2. Parent scans the facility QR (opens `/kiosk`).
 3. **Returning families:** enter phone number → select child → receive tag on screen.
 4. **New families:** register child + parent details → auto check-in with tag.
-5. **Child QR:** scan the child's permanent QR card for quick check-in.
+5. Parent shows the **tag number** at the front desk when dropping off; staff use the tag at pickup.
+
+**Front desk fallback:** staff use **Check In** for parents without a phone or internet — same tags, same attendance records.
 
 Check-out is **not** on the kiosk — staff verify pickup at the front desk as before.
 

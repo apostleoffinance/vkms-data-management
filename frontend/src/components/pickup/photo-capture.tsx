@@ -12,7 +12,7 @@ interface PhotoCaptureProps {
   onChange: (base64: string | null) => void;
 }
 
-async function fileToBase64(file: File): Promise<string> {
+function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result as string);
@@ -21,13 +21,42 @@ async function fileToBase64(file: File): Promise<string> {
   });
 }
 
+async function fileToResizedBase64(
+  file: File,
+  maxDim = 800,
+  quality = 0.8,
+): Promise<string> {
+  const dataUrl = await readFileAsDataUrl(file);
+
+  try {
+    const img = document.createElement("img");
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = reject;
+      img.src = dataUrl;
+    });
+
+    const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(img.width * scale);
+    canvas.height = Math.round(img.height * scale);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return dataUrl;
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+    return canvas.toDataURL("image/jpeg", quality);
+  } catch {
+    return dataUrl;
+  }
+}
+
 export function PhotoCapture({ label = "Guardian photo", value, onChange }: PhotoCaptureProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [preview, setPreview] = useState<string | null>(value);
 
   const handleFile = async (file: File | undefined) => {
     if (!file) return;
-    const base64 = await fileToBase64(file);
+    const base64 = await fileToResizedBase64(file);
     setPreview(base64);
     onChange(base64);
   };
