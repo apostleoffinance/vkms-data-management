@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, status
 
 from app.core.deps import DbSession
 from app.core.kiosk import KioskAccess
-from app.middleware import limiter
+from app.core.limiter import limiter
 from app.models.class_model import Class
 from app.models.service import Service
 from app.schemas.kiosk import (
