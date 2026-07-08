@@ -217,8 +217,8 @@ See `.env.cloud.example` for all variables.
 | Platform | Variables |
 |----------|-----------|
 | **Neon** | Connection string only (used as `DATABASE_URL` on Render) |
-| **Render** | `DATABASE_URL`, `JWT_SECRET_KEY`, `CORS_ORIGINS`, `COOKIE_*`, `DEFAULT_ADMIN_*` |
-| **Vercel** | `NEXT_PUBLIC_API_URL` |
+| **Render** | `DATABASE_URL`, `JWT_SECRET_KEY`, `CORS_ORIGINS`, `COOKIE_*`, `DEFAULT_ADMIN_*`, optional `KIOSK_*` |
+| **Vercel** | `NEXT_PUBLIC_API_URL`, optional `NEXT_PUBLIC_KIOSK_TOKEN` |
 
 ---
 

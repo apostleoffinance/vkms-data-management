@@ -9,6 +9,7 @@ import {
   Home,
   LogOut,
   Moon,
+  QrCode,
   Sun,
   UserCheck,
   UserPlus,
@@ -36,6 +37,7 @@ const navItems = [
   { href: "/reports", label: "Reports", icon: BarChart3, roles: ["admin"] },
   { href: "/admin/users", label: "Manage Users", icon: Users, roles: ["admin"] },
   { href: "/admin/services", label: "Services", icon: CalendarCheck, roles: ["admin"] },
+  { href: "/kiosk", label: "Parent Kiosk", icon: QrCode, roles: ["admin"], external: true },
 ];
 
 interface SidebarProps {
@@ -90,12 +92,15 @@ export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
         {filteredNav.map((item) => {
           const Icon = item.icon;
           const active = pathname === item.href || pathname.startsWith(item.href + "/");
+          const external = "external" in item && item.external;
           return (
             <Link
               key={item.href}
               href={item.href}
               onClick={handleNavClick}
               aria-current={active ? "page" : undefined}
+              target={external ? "_blank" : undefined}
+              rel={external ? "noopener noreferrer" : undefined}
               className={cn(
                 "flex items-center gap-3 rounded-lg px-3 py-2.5 text-base font-medium transition-all duration-150",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/30 focus-visible:ring-offset-2",

@@ -13,6 +13,7 @@ from app.api.routes import (
     users,
     worker_attendance,
     workers,
+    kiosk,
 )
 
 api_router = APIRouter(prefix="/api/v1")
@@ -31,3 +32,4 @@ api_router.include_router(workers.router, prefix="/workers", tags=["Workers"])
 api_router.include_router(worker_attendance.router, prefix="/worker-attendance", tags=["Worker Attendance"])
 api_router.include_router(dashboard.router, prefix="/dashboard", tags=["Dashboard"])
 api_router.include_router(reports.router, prefix="/reports", tags=["Reports"])
+api_router.include_router(kiosk.router, prefix="/kiosk", tags=["Parent Kiosk"])

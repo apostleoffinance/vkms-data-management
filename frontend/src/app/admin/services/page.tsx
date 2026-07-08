@@ -28,9 +28,11 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { apiDelete, apiGet, apiPost, apiPut } from "@/lib/api";
+import { getKioskPageUrl } from "@/lib/kiosk-api";
 import { formatDate } from "@/lib/utils";
 import type { Service } from "@/types";
 import { useAuth } from "@/contexts/auth-context";
+import { QRCodeSVG } from "qrcode.react";
 
 const CUSTOM_TYPE = "custom";
 
@@ -188,6 +190,27 @@ export default function ServicesPage() {
             {showForm ? "Cancel" : "Add Service"}
           </Button>
         </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Parent check-in kiosk</CardTitle>
+            <CardDescription>
+              Print or display this QR at the entrance. Parents scan to check in and receive a tag
+              on their phone. Check-out remains staff-only at the front desk.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
+            <QRCodeSVG value={getKioskPageUrl()} size={140} />
+            <div className="space-y-2 text-sm">
+              <p className="font-medium break-all">{getKioskPageUrl()}</p>
+              <Button type="button" variant="outline" asChild>
+                <a href="/kiosk" target="_blank" rel="noopener noreferrer">
+                  Open kiosk
+                </a>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
 
         {showForm && (
           <Card>

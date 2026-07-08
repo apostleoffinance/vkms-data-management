@@ -19,6 +19,7 @@ A children church attendance and check-in/check-out management system for Votage
 - **Service management** — create, rename, and delete services (one service per calendar date)
 - **Executive ministry reports** — AI-powered KPIs, retention, charts, follow-up list (admin)
 - **Worker roster** attendance (admin kiosk — workers tap their name, no login required)
+- **Parent check-in kiosk** — public `/kiosk` page: parents look up by phone, scan child QR, or register a new child; receive a service tag on their phone. Check-out remains staff-only at the front desk.
 - Audit logging and role-based access control
 
 ---
@@ -200,12 +201,15 @@ Never commit real secrets. Use platform dashboards or local `.env` files (gitign
 | `DEFAULT_ADMIN_PASSWORD` | See `.env.example` | Strong password (set only in Render env) |
 | `GEMINI_API_KEY` | Optional | Optional — AI executive report summaries ([Google AI Studio](https://aistudio.google.com)) |
 | `GEMINI_MODEL` | `gemini-2.5-flash` | Gemini model name |
+| `KIOSK_ENABLED` | `true` | Set `false` to disable parent kiosk API |
+| `KIOSK_TOKEN` | Empty (open) | Optional shared secret — require `X-Kiosk-Token` header or `?token=` query |
 
 ### Frontend
 
 | Variable | Local | Cloud (Vercel) |
 |----------|-------|----------------|
 | `NEXT_PUBLIC_API_URL` | `http://localhost:8000` | `https://your-api.onrender.com` |
+| `NEXT_PUBLIC_KIOSK_TOKEN` | Empty | Must match Render `KIOSK_TOKEN` when set |
 
 > `NEXT_PUBLIC_API_URL` is embedded at **build time** on Vercel. After changing it, **redeploy** the frontend.
 
@@ -368,6 +372,20 @@ Registration and bulk import match an existing parent by phone number to attach 
 
 Admin opens **Worker Attendance** on a shared device. Workers search their name in a dropdown and mark present — no individual login.
 
+### Parent check-in kiosk
+
+Parents use the public **`/kiosk`** page (no login). Admins can open it from the sidebar or print the QR on **Services**.
+
+1. Ensure **today's service** exists (Services → Add Service).
+2. Parent opens `/kiosk` (or scans the facility QR).
+3. **Returning families:** enter phone number → select child → receive tag on screen.
+4. **New families:** register child + parent details → auto check-in with tag.
+5. **Child QR:** scan the child's permanent QR card for quick check-in.
+
+Check-out is **not** on the kiosk — staff verify pickup at the front desk as before.
+
+Optional: set `KIOSK_TOKEN` on Render and `NEXT_PUBLIC_KIOSK_TOKEN` on Vercel (same value) to restrict kiosk API access.
+
 ### Authorized pickup
 
 Each child can have multiple **authorized pickup contacts** (primary parent/guardian plus others). Photos are stored in the database. At check-in, staff select who dropped the child off; at check-out, they verify who is picking up.
@@ -412,6 +430,11 @@ Interactive docs: `/api/docs` (Swagger) when the backend is running.
 | POST | `/api/v1/authorized-pickups/children/{id}` | Add pickup contact |
 | GET | `/api/v1/workers` | Worker roster |
 | POST | `/api/v1/worker-attendance` | Mark worker present |
+| GET | `/api/v1/kiosk/service/today` | Today's service (public kiosk) |
+| POST | `/api/v1/kiosk/lookup` | Parent phone lookup (public kiosk) |
+| POST | `/api/v1/kiosk/check-in` | Parent self check-in (public kiosk) |
+| POST | `/api/v1/kiosk/register` | Register child + check-in (public kiosk) |
+| GET | `/api/v1/kiosk/qr?data=` | Parse child QR payload (public kiosk) |
 
 ---
 

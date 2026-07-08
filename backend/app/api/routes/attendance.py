@@ -3,7 +3,6 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import func, or_
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload
 
 from app.core.deps import DbSession, VerifiedUser
@@ -17,9 +16,9 @@ from app.schemas.attendance import (
     CheckOutRequest,
     TagPrintResponse,
 )
+from app.services.attendance_service import CheckInError, child_attendance_on_date, perform_check_in
 from app.services.audit import log_audit
-from app.services.child_service import get_next_tag_number
-from app.services.pickup_service import ensure_primary_contact_from_parent, get_contact_for_child
+from app.services.pickup_service import get_contact_for_child
 
 router = APIRouter()
 
@@ -54,13 +53,8 @@ def _attendance_query(db: DbSession):
     )
 
 
-def _child_attendance_on_date(db: DbSession, child_id: uuid.UUID, service_date) -> Attendance | None:
-    """One check-in per child per service date."""
-    return (
-        db.query(Attendance)
-        .filter(Attendance.child_id == child_id, Attendance.service_date == service_date)
-        .first()
-    )
+def _child_attendance_on_date(db: DbSession, child_id: uuid.UUID, service_date):
+    return child_attendance_on_date(db, child_id, service_date)
 
 
 def _attendance_response(record: Attendance) -> AttendanceResponse:
@@ -196,67 +190,36 @@ def check_in(body: CheckInRequest, db: DbSession, current_user: VerifiedUser) ->
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid contact id") from exc
 
-    tag_number = get_next_tag_number(db, service.id)
-    now = datetime.now(UTC)
-    attendance: Attendance | None = None
-
-    for attempt in range(2):
-        ensure_primary_contact_from_parent(db, child)
-        dropped_off = get_contact_for_child(db, child.id, dropped_off_contact_id)
-        if not dropped_off:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Selected drop-off person is not authorized for this child",
-            )
-        tag_number = get_next_tag_number(db, service.id)
-        attendance = Attendance(
+    try:
+        result = perform_check_in(
+            db,
             child_id=child.id,
-            service_id=service.id,
-            service_date=service.service_date,
-            tag_number=tag_number,
-            check_in_time=now,
+            service=service,
+            dropped_off_contact_id=dropped_off_contact_id,
             notes=body.notes,
-            dropped_off_contact_id=dropped_off.id,
         )
-        db.add(attendance)
-        try:
-            db.commit()
-            break
-        except IntegrityError as exc:
-            db.rollback()
-            if attempt == 0 and "uq_attendance_service_tag" in str(exc.orig):
-                tag_number = get_next_tag_number(db, service.id)
-                continue
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"{child.full_name} already has attendance recorded for this service date",
-            ) from exc
-    if attendance is None:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Could not assign a unique tag number. Please try again.",
-        )
+    except CheckInError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
-    db.refresh(attendance)
     log_audit(
         db,
         "check_in",
         "attendance",
         user_id=current_user.id,
-        resource_id=str(attendance.id),
+        resource_id=str(result.attendance_id),
         details={
-            "tag_number": tag_number,
+            "tag_number": result.tag_number,
             "child_code": child.child_code,
-            "dropped_off": dropped_off.full_name,
+            "dropped_off": result.dropped_off_name,
         },
     )
 
     return TagPrintResponse(
-        tag_number=tag_number,
-        child_name=child.full_name,
-        class_name=child.class_.name,
-        check_in_time=now,
-        child_code=child.child_code,
+        tag_number=result.tag_number,
+        child_name=result.child_name,
+        class_name=result.class_name,
+        check_in_time=result.check_in_time,
+        child_code=result.child_code,
     )
 
 
