@@ -19,7 +19,7 @@ A children church attendance and check-in/check-out management system for Votage
 - **Service management** — create, rename, and delete services (one service per calendar date)
 - **Executive ministry reports** — AI-powered KPIs, retention, charts, follow-up list (admin)
 - **Worker roster** attendance (admin kiosk — workers tap their name, no login required)
-- **Parent check-in kiosk** — public `/kiosk` page: parents look up by phone, scan child QR, or register a new child; receive a service tag on their phone. Check-out remains staff-only at the front desk.
+- **Parent check-in kiosk** — public `/kiosk` page: parents check in or pick up by phone, register new children with one-time pickup photos, and show a confirmation at the front desk. Staff check-in/out remains available as fallback.
 - Audit logging and role-based access control
 
 ---
@@ -378,13 +378,14 @@ Print **one permanent facility QR** from **Services** and mount it at the entran
 
 1. Ensure **today's service** exists (Services → Add Service).
 2. Parent scans the facility QR (opens `/kiosk`).
-3. **Returning families:** enter phone number → select child → receive tag on screen.
-4. **New families:** register child + parent details → auto check-in with tag.
-5. Parent shows the **tag number** at the front desk when dropping off; staff use the tag at pickup.
+3. **Returning families:** enter phone number → select child → receive tag on screen (one-time parent photo if not on file).
+4. **New families:** register child + parent details + **parent photo** → auto check-in with tag.
+5. **Pick up:** enter phone → select child → choose who is picking up → show **pickup confirmation** at the front desk.
+6. **New authorized pickup person:** add their name + **one-time photo** on the kiosk or via staff on the child profile.
 
-**Front desk fallback:** staff use **Check In** for parents without a phone or internet — same tags, same attendance records.
+**Front desk fallback:** staff use **Check In** / **Check Out** for parents without a phone or internet — same tags, same attendance records.
 
-Check-out is **not** on the kiosk — staff verify pickup at the front desk as before.
+Staff can still verify pickup using on-file photos when parents show their confirmation screen.
 
 Optional: set `KIOSK_TOKEN` on Render and `NEXT_PUBLIC_KIOSK_TOKEN` on Vercel (same value) to restrict kiosk API access.
 
@@ -436,6 +437,9 @@ Interactive docs: `/api/docs` (Swagger) when the backend is running.
 | POST | `/api/v1/kiosk/lookup` | Parent phone lookup (public kiosk) |
 | POST | `/api/v1/kiosk/check-in` | Parent self check-in (public kiosk) |
 | POST | `/api/v1/kiosk/register` | Register child + check-in (public kiosk) |
+| POST | `/api/v1/kiosk/check-out` | Parent self check-out (public kiosk) |
+| POST | `/api/v1/kiosk/add-pickup` | Add authorized pickup person + photo (public kiosk) |
+| GET | `/api/v1/kiosk/children/{id}/pickup-contacts` | List pickup contacts (public kiosk) |
 | GET | `/api/v1/kiosk/qr?data=` | Parse child QR payload (public kiosk) |
 
 ---

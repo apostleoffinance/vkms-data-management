@@ -64,6 +64,7 @@ export interface KioskChildStatus {
   tag_number: string | null;
   checked_out: boolean;
   check_in_time: string | null;
+  ready_for_pickup: boolean;
 }
 
 export interface KioskLookupResponse {
@@ -82,9 +83,29 @@ export interface KioskTagResult {
   already_checked_in: boolean;
 }
 
-export interface KioskChildPreview {
-  child: KioskChildStatus;
+export interface KioskCheckOutResult {
+  child_name: string;
+  tag_number: string;
+  class_name: string;
+  pickup_person_name: string;
+  check_out_time: string;
   service_name: string;
+  already_checked_out: boolean;
+}
+
+export interface KioskPickupContact {
+  id: string;
+  full_name: string;
+  relationship: string;
+  has_photo: boolean;
+}
+
+export interface KioskPickupPerson {
+  first_name: string;
+  last_name: string;
+  phone: string;
+  relationship: string;
+  photo_base64: string;
 }
 
 export async function kioskGetTodayService(): Promise<KioskService | null> {
@@ -103,21 +124,67 @@ export async function kioskLookup(phone: string): Promise<KioskLookupResponse | 
   return handleResponse<KioskLookupResponse | null>(response);
 }
 
-export async function kioskCheckIn(childId: string): Promise<KioskTagResult> {
+export async function kioskGetPickupContacts(
+  childId: string,
+  phone: string,
+): Promise<KioskPickupContact[]> {
+  const url = new URL(kioskUrl(`/api/v1/kiosk/children/${childId}/pickup-contacts`));
+  url.searchParams.set("phone", phone);
+  const response = await fetch(url.toString(), { headers: kioskHeaders() });
+  return handleResponse<KioskPickupContact[]>(response);
+}
+
+export async function kioskCheckIn(
+  childId: string,
+  phone: string,
+  photoBase64?: string,
+): Promise<KioskTagResult> {
   const response = await fetch(kioskUrl("/api/v1/kiosk/check-in"), {
     method: "POST",
     headers: kioskHeaders(),
-    body: JSON.stringify({ child_id: childId }),
+    body: JSON.stringify({
+      child_id: childId,
+      phone,
+      photo_base64: photoBase64 || null,
+    }),
   });
   return handleResponse<KioskTagResult>(response);
 }
 
-export async function kioskParseQr(data: string): Promise<KioskChildPreview> {
-  const response = await fetch(
-    kioskUrl(`/api/v1/kiosk/qr?data=${encodeURIComponent(data)}`),
-    { headers: kioskHeaders() },
-  );
-  return handleResponse<KioskChildPreview>(response);
+export async function kioskCheckOut(
+  childId: string,
+  phone: string,
+  pickedUpContactId: string,
+  photoBase64?: string,
+): Promise<KioskCheckOutResult> {
+  const response = await fetch(kioskUrl("/api/v1/kiosk/check-out"), {
+    method: "POST",
+    headers: kioskHeaders(),
+    body: JSON.stringify({
+      child_id: childId,
+      phone,
+      picked_up_contact_id: pickedUpContactId,
+      photo_base64: photoBase64 || null,
+    }),
+  });
+  return handleResponse<KioskCheckOutResult>(response);
+}
+
+export async function kioskAddPickup(payload: {
+  phone: string;
+  child_id: string;
+  first_name: string;
+  last_name: string;
+  contact_phone: string;
+  relationship: string;
+  photo_base64: string;
+}): Promise<KioskPickupContact> {
+  const response = await fetch(kioskUrl("/api/v1/kiosk/add-pickup"), {
+    method: "POST",
+    headers: kioskHeaders(),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<KioskPickupContact>(response);
 }
 
 export interface KioskRegisterPayload {
@@ -129,7 +196,9 @@ export interface KioskRegisterPayload {
   parent_last_name: string;
   parent_phone: string;
   parent_email?: string;
+  parent_photo_base64: string;
   medical_notes?: string;
+  additional_pickup?: KioskPickupPerson;
 }
 
 export async function kioskRegister(payload: KioskRegisterPayload): Promise<KioskTagResult> {

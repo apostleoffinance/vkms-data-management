@@ -25,6 +25,7 @@ class KioskChildStatus(BaseModel):
     tag_number: str | None = None
     checked_out: bool = False
     check_in_time: datetime | None = None
+    ready_for_pickup: bool = False
 
 
 class KioskLookupRequest(BaseModel):
@@ -39,6 +40,16 @@ class KioskLookupResponse(BaseModel):
 
 class KioskCheckInRequest(BaseModel):
     child_id: str
+    phone: str = Field(min_length=7, max_length=20)
+    photo_base64: str | None = None
+
+
+class KioskPickupPerson(BaseModel):
+    first_name: str = Field(min_length=1, max_length=100)
+    last_name: str = Field(min_length=1, max_length=100)
+    phone: str = Field(min_length=7, max_length=20)
+    relationship: str = Field(default="Guardian", min_length=1, max_length=50)
+    photo_base64: str = Field(min_length=10)
 
 
 class KioskRegisterRequest(BaseModel):
@@ -50,7 +61,33 @@ class KioskRegisterRequest(BaseModel):
     parent_last_name: str = Field(min_length=1, max_length=100)
     parent_phone: str = Field(min_length=7, max_length=20)
     parent_email: EmailStr | None = None
+    parent_photo_base64: str = Field(min_length=10)
     medical_notes: str | None = None
+    additional_pickup: KioskPickupPerson | None = None
+
+
+class KioskAddPickupRequest(BaseModel):
+    phone: str = Field(min_length=7, max_length=20)
+    child_id: str
+    first_name: str = Field(min_length=1, max_length=100)
+    last_name: str = Field(min_length=1, max_length=100)
+    contact_phone: str = Field(min_length=7, max_length=20)
+    relationship: str = Field(default="Guardian", min_length=1, max_length=50)
+    photo_base64: str = Field(min_length=10)
+
+
+class KioskPickupContactOption(BaseModel):
+    id: str
+    full_name: str
+    relationship: str
+    has_photo: bool
+
+
+class KioskCheckOutRequest(BaseModel):
+    phone: str = Field(min_length=7, max_length=20)
+    child_id: str
+    picked_up_contact_id: str
+    photo_base64: str | None = None
 
 
 class KioskChildPreview(BaseModel):
@@ -66,3 +103,13 @@ class KioskTagResponse(BaseModel):
     check_in_time: datetime
     service_name: str
     already_checked_in: bool = False
+
+
+class KioskCheckOutResponse(BaseModel):
+    child_name: str
+    tag_number: str
+    class_name: str
+    pickup_person_name: str
+    check_out_time: datetime
+    service_name: str
+    already_checked_out: bool = False

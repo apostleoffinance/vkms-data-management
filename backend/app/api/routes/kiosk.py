@@ -8,11 +8,15 @@ from app.core.limiter import limiter
 from app.models.class_model import Class
 from app.models.service import Service
 from app.schemas.kiosk import (
+    KioskAddPickupRequest,
     KioskCheckInRequest,
+    KioskCheckOutRequest,
+    KioskCheckOutResponse,
     KioskChildPreview,
     KioskClassOption,
     KioskLookupRequest,
     KioskLookupResponse,
+    KioskPickupContactOption,
     KioskRegisterRequest,
     KioskServiceResponse,
     KioskTagResponse,
@@ -22,8 +26,11 @@ from app.services.audit import log_audit
 from app.services.kiosk_service import (
     get_child_by_code,
     get_today_service,
+    kiosk_add_pickup_contact,
     kiosk_check_in_child,
+    kiosk_check_out_child,
     kiosk_register_and_check_in,
+    list_pickup_contacts,
     lookup_parent_children,
     parse_child_code_from_scan,
 )
@@ -49,7 +56,7 @@ def _require_today_service(db: DbSession, *, lock: bool = False) -> Service:
     )
 
 
-def _handle_check_in_error(exc: CheckInError) -> None:
+def _handle_kiosk_error(exc: CheckInError) -> None:
     raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
 
@@ -111,6 +118,65 @@ def kiosk_child_by_code(
     return KioskChildPreview(child=status_row, service_name=service.service_name)
 
 
+@router.get("/children/{child_id}/pickup-contacts", response_model=list[KioskPickupContactOption])
+@limiter.limit("30/minute")
+def kiosk_pickup_contacts(
+    request: Request,
+    child_id: str,
+    db: DbSession,
+    _: KioskAccess,
+    phone: str = Query(min_length=7, max_length=20),
+) -> list[KioskPickupContactOption]:
+    _require_today_service(db)
+    try:
+        child_uuid = uuid.UUID(child_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid child id") from exc
+    try:
+        return list_pickup_contacts(db, child_uuid, phone)
+    except CheckInError as exc:
+        _handle_kiosk_error(exc)
+    raise HTTPException(status_code=500, detail="Could not load pickup contacts")
+
+
+@router.post("/add-pickup", response_model=KioskPickupContactOption)
+@limiter.limit("20/minute")
+def kiosk_add_pickup(
+    request: Request,
+    body: KioskAddPickupRequest,
+    db: DbSession,
+    _: KioskAccess,
+) -> KioskPickupContactOption:
+    _require_today_service(db)
+    try:
+        child_uuid = uuid.UUID(body.child_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid child id") from exc
+    try:
+        result = kiosk_add_pickup_contact(
+            db,
+            phone=body.phone,
+            child_id=child_uuid,
+            first_name=body.first_name,
+            last_name=body.last_name,
+            contact_phone=body.contact_phone,
+            relationship=body.relationship,
+            photo_base64=body.photo_base64,
+        )
+    except CheckInError as exc:
+        _handle_kiosk_error(exc)
+    else:
+        log_audit(
+            db,
+            "kiosk_add_pickup",
+            "authorized_pickup",
+            details={"child_id": body.child_id, "name": f"{body.first_name} {body.last_name}"},
+            ip_address=request.client.host if request.client else None,
+        )
+        return result
+    raise HTTPException(status_code=500, detail="Could not add pickup person")
+
+
 @router.post("/check-in", response_model=KioskTagResponse)
 @limiter.limit("30/minute")
 def kiosk_check_in(
@@ -125,9 +191,15 @@ def kiosk_check_in(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid child id") from exc
     try:
-        result = kiosk_check_in_child(db, child_uuid, service)
+        result = kiosk_check_in_child(
+            db,
+            child_uuid,
+            service,
+            phone=body.phone,
+            photo_base64=body.photo_base64,
+        )
     except CheckInError as exc:
-        _handle_check_in_error(exc)
+        _handle_kiosk_error(exc)
     else:
         log_audit(
             db,
@@ -142,6 +214,48 @@ def kiosk_check_in(
         )
         return result
     raise HTTPException(status_code=500, detail="Check-in failed")
+
+
+@router.post("/check-out", response_model=KioskCheckOutResponse)
+@limiter.limit("30/minute")
+def kiosk_check_out(
+    request: Request,
+    body: KioskCheckOutRequest,
+    db: DbSession,
+    _: KioskAccess,
+) -> KioskCheckOutResponse:
+    service = _require_today_service(db, lock=True)
+    try:
+        child_uuid = uuid.UUID(body.child_id)
+        contact_uuid = uuid.UUID(body.picked_up_contact_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid id") from exc
+    try:
+        result = kiosk_check_out_child(
+            db,
+            child_uuid,
+            service,
+            phone=body.phone,
+            picked_up_contact_id=contact_uuid,
+            photo_base64=body.photo_base64,
+        )
+    except CheckInError as exc:
+        _handle_kiosk_error(exc)
+    else:
+        log_audit(
+            db,
+            "kiosk_check_out",
+            "attendance",
+            details={
+                "child_id": body.child_id,
+                "tag_number": result.tag_number,
+                "picked_up": result.pickup_person_name,
+                "source": "kiosk",
+            },
+            ip_address=request.client.host if request.client else None,
+        )
+        return result
+    raise HTTPException(status_code=500, detail="Check-out failed")
 
 
 @router.post("/register", response_model=KioskTagResponse)
@@ -164,11 +278,13 @@ def kiosk_register(
             parent_last_name=body.parent_last_name,
             parent_phone=body.parent_phone,
             parent_email=str(body.parent_email) if body.parent_email else None,
+            parent_photo_base64=body.parent_photo_base64,
             medical_notes=body.medical_notes,
+            additional_pickup=body.additional_pickup,
             service=service,
         )
     except CheckInError as exc:
-        _handle_check_in_error(exc)
+        _handle_kiosk_error(exc)
     else:
         log_audit(
             db,

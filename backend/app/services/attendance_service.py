@@ -119,3 +119,69 @@ def perform_check_in(
         attendance_id=attendance.id,
         dropped_off_name=dropped_off_name,
     )
+
+
+@dataclass
+class CheckOutResult:
+    child_name: str
+    tag_number: str
+    class_name: str
+    pickup_person_name: str
+    check_out_time: datetime
+    attendance_id: uuid.UUID
+    already_checked_out: bool = False
+
+
+def perform_check_out(
+    db: Session,
+    *,
+    child_id: uuid.UUID,
+    service: Service,
+    picked_up_contact_id: uuid.UUID,
+    checked_out_by: uuid.UUID | None = None,
+) -> CheckOutResult:
+    child = (
+        db.query(Child)
+        .options(joinedload(Child.class_))
+        .filter(Child.id == child_id, Child.is_active.is_(True))
+        .first()
+    )
+    if not child:
+        raise CheckInError("Child not found", status_code=404)
+
+    record = child_attendance_on_date(db, child.id, service.service_date)
+    if not record:
+        raise CheckInError(f"{child.full_name} is not checked in for today's service", status_code=404)
+
+    if record.checked_out:
+        picked_up = record.picked_up_contact
+        return CheckOutResult(
+            child_name=child.full_name,
+            tag_number=record.tag_number,
+            class_name=child.class_.name,
+            pickup_person_name=picked_up.full_name if picked_up else "",
+            check_out_time=record.check_out_time or datetime.now(UTC),
+            attendance_id=record.id,
+            already_checked_out=True,
+        )
+
+    picked_up = get_contact_for_child(db, child.id, picked_up_contact_id)
+    if not picked_up:
+        raise CheckInError("Selected pickup person is not authorized for this child")
+
+    now = datetime.now(UTC)
+    record.checked_out = True
+    record.check_out_time = now
+    record.checked_out_by = checked_out_by
+    record.picked_up_contact_id = picked_up.id
+    db.commit()
+    db.refresh(record)
+
+    return CheckOutResult(
+        child_name=child.full_name,
+        tag_number=record.tag_number,
+        class_name=child.class_.name,
+        pickup_person_name=picked_up.full_name,
+        check_out_time=now,
+        attendance_id=record.id,
+    )
