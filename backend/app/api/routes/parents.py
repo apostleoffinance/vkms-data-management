@@ -11,6 +11,16 @@ from app.services.report_service import export_csv, export_excel
 
 router = APIRouter()
 
+ALLOWED_PARENT_EXPORT_FIELDS = {
+    "first_name",
+    "last_name",
+    "phone",
+    "alternative_phone",
+    "email",
+    "address",
+}
+DEFAULT_PARENT_EXPORT_FIELDS = ["first_name", "last_name", "phone"]
+
 
 @router.get("/lookup/by-phone", response_model=ParentLookupResponse | None)
 def lookup_parent_by_phone(
@@ -54,8 +64,23 @@ def export_parents(
     db: DbSession,
     admin: AdminUser,
     format: str = Query(default="csv", pattern="^(csv|excel)$"),
+    fields: str | None = Query(
+        default=None,
+        description="Comma-separated fields. Default: first_name,last_name,phone. "
+        "Optional: alternative_phone,email,address",
+    ),
 ) -> Response:
-    """Download parent names and phone numbers (deduped by match key)."""
+    """Download selected parent fields. Defaults to name + phone only."""
+    selected: list[str] = list(DEFAULT_PARENT_EXPORT_FIELDS)
+    if fields:
+        selected = []
+        for field in fields.split(","):
+            field = field.strip()
+            if field in ALLOWED_PARENT_EXPORT_FIELDS and field not in selected:
+                selected.append(field)
+        if not selected:
+            selected = list(DEFAULT_PARENT_EXPORT_FIELDS)
+
     parents = db.query(Parent).order_by(Parent.last_name, Parent.first_name).all()
     seen: set[str] = set()
     rows: list[dict] = []
@@ -64,15 +89,11 @@ def export_parents(
         if key in seen:
             continue
         seen.add(key)
-        rows.append(
-            {
-                "first_name": parent.first_name,
-                "last_name": parent.last_name,
-                "phone": parent.phone,
-                "alternative_phone": parent.alternative_phone or "",
-                "email": parent.email or "",
-            }
-        )
+        row: dict = {}
+        for field in selected:
+            value = getattr(parent, field, None)
+            row[field] = value if value is not None else ""
+        rows.append(row)
 
     if format == "excel":
         content = export_excel(rows, sheet_name="Parents")

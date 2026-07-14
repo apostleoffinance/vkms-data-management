@@ -10,6 +10,7 @@ import {
   ExecutiveReportView,
   printExecutiveReport,
 } from "@/components/reports/executive-report-view";
+import { ParentContactsExport } from "@/components/reports/parent-contacts-export";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -91,11 +92,6 @@ export default function ReportsPage() {
       `/api/v1/reports/executive/follow-up-phones?${params.toString()}`,
       `vkms-followup-phones-${execPeriod}-${label}.${ext}`,
     );
-  };
-
-  const handleParentsContacts = async (format: "csv" | "excel") => {
-    const ext = format === "excel" ? "xlsx" : "csv";
-    await apiDownload(`/api/v1/parents/export?format=${format}`, `vkms-parents-contacts.${ext}`);
   };
 
   return (
@@ -181,19 +177,12 @@ export default function ReportsPage() {
             <CardHeader>
               <CardTitle>Parent contacts</CardTitle>
               <CardDescription>
-                Download parent names and phone numbers for outreach (separate from the executive
-                report).
+                Downloads name and phone by default. Use Choose fields to optionally include email
+                or address.
               </CardDescription>
             </CardHeader>
-            <CardContent className="flex flex-wrap gap-2">
-              <Button variant="outline" onClick={() => handleParentsContacts("csv")}>
-                <Download className="h-4 w-4 mr-2" />
-                Parents CSV
-              </Button>
-              <Button variant="outline" onClick={() => handleParentsContacts("excel")}>
-                <Download className="h-4 w-4 mr-2" />
-                Parents Excel
-              </Button>
+            <CardContent>
+              <ParentContactsExport />
             </CardContent>
           </Card>
         </div>

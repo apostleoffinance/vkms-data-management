@@ -2,15 +2,15 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Download, Search } from "lucide-react";
+import { Search } from "lucide-react";
 import Link from "next/link";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
-import { Button } from "@/components/ui/button";
+import { ParentContactsExport } from "@/components/reports/parent-contacts-export";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/ui/loading";
-import { apiDownload, apiGet } from "@/lib/api";
+import { apiGet } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import type { Parent } from "@/types";
 
@@ -27,28 +27,16 @@ export default function ParentsPage() {
       ),
   });
 
-  const downloadContacts = async (format: "csv" | "excel") => {
-    const ext = format === "excel" ? "xlsx" : "csv";
-    await apiDownload(`/api/v1/parents/export?format=${format}`, `vkms-parents-contacts.${ext}`);
-  };
-
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
           <h1 className="text-3xl font-bold">Parent Directory</h1>
-          {isAdmin && (
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => void downloadContacts("csv")}>
-                <Download className="h-4 w-4 mr-2" />
-                Download CSV
-              </Button>
-              <Button variant="outline" onClick={() => void downloadContacts("excel")}>
-                <Download className="h-4 w-4 mr-2" />
-                Download Excel
-              </Button>
+          {isAdmin ? (
+            <div className="max-w-md">
+              <ParentContactsExport />
             </div>
-          )}
+          ) : null}
         </div>
 
         <Card>
