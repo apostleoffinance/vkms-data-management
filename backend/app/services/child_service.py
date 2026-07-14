@@ -39,7 +39,68 @@ def generate_qr_code(child_code: str, child_id: uuid.UUID) -> str:
 
 
 def normalize_phone(phone: str) -> str:
-    return re.sub(r"\D", "", phone.strip())
+    """Strip non-digits. Prefer phone_match_key() when comparing two numbers."""
+    return re.sub(r"\D", "", (phone or "").strip())
+
+
+def phone_match_key(phone: str) -> str:
+    """
+    Canonical key for matching phone numbers (Nigeria-friendly).
+
+    Treats 08012345678, 8012345678, and 2348012345678 as the same number.
+    """
+    digits = normalize_phone(phone)
+    if not digits:
+        return ""
+    if digits.startswith("234") and len(digits) >= 13:
+        digits = digits[3:]
+    if digits.startswith("0") and len(digits) >= 11:
+        digits = digits[1:]
+    if len(digits) >= 10:
+        return digits[-10:]
+    return digits if len(digits) >= 7 else ""
+
+
+def phones_match(a: str | None, b: str | None) -> bool:
+    if not a or not b:
+        return False
+    key_a, key_b = phone_match_key(a), phone_match_key(b)
+    return bool(key_a) and key_a == key_b
+
+
+def find_parents_by_phone(db: Session, phone: str) -> list[Parent]:
+    """All parent rows whose primary or alternative phone matches (including format variants)."""
+    target = phone_match_key(phone)
+    if len(target) < 7:
+        return []
+    matches: list[Parent] = []
+    for parent in db.query(Parent).all():
+        if phones_match(parent.phone, phone):
+            matches.append(parent)
+            continue
+        if parent.alternative_phone and phones_match(parent.alternative_phone, phone):
+            matches.append(parent)
+    return matches
+
+
+def find_parent_by_phone(db: Session, phone: str) -> Parent | None:
+    parents = find_parents_by_phone(db, phone)
+    return parents[0] if parents else None
+
+
+def find_active_children_for_phone(db: Session, phone: str) -> list[Child]:
+    """All active children linked to any parent row matching this phone."""
+    parents = find_parents_by_phone(db, phone)
+    if not parents:
+        return []
+    parent_ids = [p.id for p in parents]
+    return (
+        db.query(Child)
+        .options(joinedload(Child.class_), joinedload(Child.parent))
+        .filter(Child.parent_id.in_(parent_ids), Child.is_active.is_(True))
+        .order_by(Child.first_name, Child.last_name)
+        .all()
+    )
 
 
 def normalize_person_name(name: str) -> str:
@@ -68,6 +129,22 @@ def find_child_with_conflicting_first_name(
         .all()
     )
     for sibling in siblings:
+        if exclude_child_id and sibling.id == exclude_child_id:
+            continue
+        if first_names_overlap(first_name, sibling.first_name):
+            return sibling
+    return None
+
+
+def find_child_with_conflicting_first_name_for_phone(
+    db: Session,
+    phone: str,
+    first_name: str,
+    *,
+    exclude_child_id: uuid.UUID | None = None,
+) -> Child | None:
+    """Conflict check across all children under any parent matching this phone."""
+    for sibling in find_active_children_for_phone(db, phone):
         if exclude_child_id and sibling.id == exclude_child_id:
             continue
         if first_names_overlap(first_name, sibling.first_name):
@@ -136,16 +213,6 @@ def resolve_class_alias(class_name: object | None) -> str:
 def find_class_by_name(db: Session, class_name: object | None) -> Class | None:
     name = resolve_class_alias(class_name)
     return db.query(Class).filter(func.lower(Class.name) == name.lower()).first()
-
-
-def find_parent_by_phone(db: Session, phone: str) -> Parent | None:
-    target = normalize_phone(phone)
-    if len(target) < 7:
-        return None
-    for parent in db.query(Parent).options(joinedload(Parent.children)).all():
-        if normalize_phone(parent.phone) == target:
-            return parent
-    return None
 
 
 def _sync_parent_details(

@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Download, FileText, Printer, Sparkles } from "lucide-react";
+import { Download, FileText, Phone, Printer, Sparkles } from "lucide-react";
+import { toast } from "sonner";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import {
@@ -76,6 +77,27 @@ export default function ReportsPage() {
     );
   };
 
+  const handleFollowUpPhones = async (format: "csv" | "excel") => {
+    const count = executive?.metrics.absent_two_services_count ?? 0;
+    if (!count) {
+      toast.error("No follow-up contacts for this period");
+      return;
+    }
+    const params = new URLSearchParams({ period: execPeriod, format });
+    if (targetDate) params.set("target_date", targetDate);
+    const label = targetDate || new Date().toISOString().slice(0, 10);
+    const ext = format === "excel" ? "xlsx" : "csv";
+    await apiDownload(
+      `/api/v1/reports/executive/follow-up-phones?${params.toString()}`,
+      `vkms-followup-phones-${execPeriod}-${label}.${ext}`,
+    );
+  };
+
+  const handleParentsContacts = async (format: "csv" | "excel") => {
+    const ext = format === "excel" ? "xlsx" : "csv";
+    await apiDownload(`/api/v1/parents/export?format=${format}`, `vkms-parents-contacts.${ext}`);
+  };
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -128,10 +150,50 @@ export default function ReportsPage() {
                   <FileText className="h-4 w-4 mr-2" />
                   Basic PDF
                 </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => handleFollowUpPhones("csv")}
+                  disabled={!executive?.metrics.absent_two_services_count}
+                >
+                  <Phone className="h-4 w-4 mr-2" />
+                  Follow-up contacts (CSV)
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => handleFollowUpPhones("excel")}
+                  disabled={!executive?.metrics.absent_two_services_count}
+                >
+                  <Phone className="h-4 w-4 mr-2" />
+                  Follow-up contacts (Excel)
+                </Button>
               </div>
+              <p className="mt-3 text-xs text-muted-foreground">
+                The printed report contains metrics only — no personal names or phone numbers.
+                Download follow-up contacts or parent contacts when you need to reach families.
+              </p>
               {execLoading ? (
                 <p className="mt-4 text-sm text-muted-foreground">Generating report...</p>
               ) : null}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Parent contacts</CardTitle>
+              <CardDescription>
+                Download parent names and phone numbers for outreach (separate from the executive
+                report).
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => handleParentsContacts("csv")}>
+                <Download className="h-4 w-4 mr-2" />
+                Parents CSV
+              </Button>
+              <Button variant="outline" onClick={() => handleParentsContacts("excel")}>
+                <Download className="h-4 w-4 mr-2" />
+                Parents Excel
+              </Button>
             </CardContent>
           </Card>
         </div>

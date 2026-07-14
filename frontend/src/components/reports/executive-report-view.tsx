@@ -438,66 +438,70 @@ export function ExecutiveReportView({ data, className, id = "executive-report" }
           </section>
         ) : null}
 
-        {/* Workers */}
+        {/* Workers — counts only (no names) */}
         {metrics.workers_on_duty.length > 0 ? (
           <section className="rounded-xl border border-blue-200 bg-blue-50/40 p-5 print:break-inside-avoid">
             <SectionTitle accent="bg-blue-500">Workers on Duty</SectionTitle>
-            <div className="mt-4 overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-blue-700 text-white">
-                    <th className="rounded-tl-lg p-2 text-left font-medium">Worker</th>
-                    <th className="p-2 text-left font-medium">Check-in</th>
-                    <th className="rounded-tr-lg p-2 text-left font-medium">Date</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {metrics.workers_on_duty.map((w, i) => (
-                    <tr
-                      key={`${w.worker_name}-${w.service_date}-${i}`}
-                      className={cn("border-b border-blue-100", i % 2 === 0 ? "bg-white" : "bg-blue-50/60")}
-                    >
-                      <td className="p-2 font-medium text-neutral-900">{w.worker_name}</td>
-                      <td className="p-2 text-neutral-800">{w.check_in}</td>
-                      <td className="p-2 text-neutral-800">{w.service_date}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <p className="mt-3 text-base font-medium text-neutral-800">
+              <span className="text-3xl font-extrabold text-blue-800">
+                {metrics.workers_on_duty.length}
+              </span>{" "}
+              worker{metrics.workers_on_duty.length === 1 ? "" : "s"} checked in for this period
+            </p>
+            <p className="mt-2 text-xs text-neutral-600">
+              Individual worker names are omitted from this report for privacy.
+            </p>
           </section>
         ) : null}
 
-        {/* Follow-up */}
+        {/* Follow-up — aggregate only (no names or phones) */}
         <section className="rounded-xl border border-red-200 bg-red-50/30 p-5 print:break-inside-avoid">
           <SectionTitle accent="bg-red-500">
-            Follow-up: Absent 2+ Consecutive Services ({metrics.absent_two_services_count})
+            Follow-up: Absent 2+ Consecutive Services
           </SectionTitle>
-          {metrics.absent_two_services.length > 0 ? (
-            <div className="mt-4 overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-red-600 text-white">
-                    <th className="p-2 text-left font-medium">Child</th>
-                    <th className="p-2 text-left font-medium">Class</th>
-                    <th className="p-2 text-left font-medium">Parent</th>
-                    <th className="p-2 text-left font-medium">Phone</th>
-                    <th className="p-2 text-left font-medium">Last Attendance</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {metrics.absent_two_services.map((row) => (
-                    <tr key={`${row.child_name}-${row.phone}`} className="border-b bg-white even:bg-red-50/50">
-                      <td className="p-2 font-medium text-neutral-900">{row.child_name}</td>
-                      <td className="p-2 text-neutral-800">{row.class_name}</td>
-                      <td className="p-2 text-neutral-800">{row.parent_name}</td>
-                      <td className="p-2 text-neutral-800">{row.phone}</td>
-                      <td className="p-2 text-neutral-800">{row.last_attendance}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+          <p className="mt-3 text-base font-medium text-neutral-800">
+            <span className="text-3xl font-extrabold text-red-700">
+              {metrics.absent_two_services_count}
+            </span>{" "}
+            child{metrics.absent_two_services_count === 1 ? "" : "ren"} need follow-up
+          </p>
+          {metrics.absent_two_services_count > 0 ? (
+            <>
+              {(() => {
+                const byClass = metrics.absent_two_services.reduce<Record<string, number>>(
+                  (acc, row) => {
+                    acc[row.class_name] = (acc[row.class_name] || 0) + 1;
+                    return acc;
+                  },
+                  {},
+                );
+                const entries = Object.entries(byClass).sort((a, b) => b[1] - a[1]);
+                return entries.length > 0 ? (
+                  <div className="mt-4 overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-red-600 text-white">
+                          <th className="p-2 text-left font-medium">Class</th>
+                          <th className="p-2 text-right font-medium">Count</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {entries.map(([className, count]) => (
+                          <tr key={className} className="border-b bg-white even:bg-red-50/50">
+                            <td className="p-2 font-medium text-neutral-900">{className}</td>
+                            <td className="p-2 text-right tabular-nums text-neutral-800">{count}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : null;
+              })()}
+              <p className="mt-3 text-xs text-neutral-600">
+                Child names, parent names, and phone numbers are not included on this report. Download
+                follow-up contacts separately when calling families.
+              </p>
+            </>
           ) : (
             <p className="mt-3 text-sm text-neutral-600">
               No children require follow-up at this time.

@@ -109,6 +109,48 @@ def executive_report_preview(
     }
 
 
+@router.get("/executive/follow-up-phones")
+def executive_follow_up_phones(
+    db: DbSession,
+    current_user: VerifiedUser,
+    period: str = Query(
+        default="daily",
+        pattern="^(daily|weekly|monthly|quarterly|yearly)$",
+    ),
+    target_date: date | None = Query(default=None),
+    start_date: date | None = Query(default=None),
+    end_date: date | None = Query(default=None),
+    format: str = Query(default="csv", pattern="^(csv|excel)$"),
+) -> Response:
+    """Download follow-up contact phones separately (not printed on the report)."""
+    metrics = build_executive_metrics(db, period, target_date, start_date, end_date)
+    rows = [
+        {
+            "child_name": r["child_name"],
+            "class_name": r["class_name"],
+            "parent_name": r["parent_name"],
+            "phone": r["phone"],
+            "last_attendance": r["last_attendance"],
+        }
+        for r in metrics["absent_two_services"]
+    ]
+    label = (target_date or date.today()).isoformat()
+    filename = f"vkms_followup_phones_{period}_{label}"
+    if format == "excel":
+        content = export_excel(rows, sheet_name="Follow-up phones")
+        media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        filename += ".xlsx"
+    else:
+        content = export_csv(rows)
+        media_type = "text/csv"
+        filename += ".csv"
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.get("/executive/export")
 def executive_report_export(
     db: DbSession,

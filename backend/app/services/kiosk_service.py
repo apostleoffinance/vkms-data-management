@@ -30,13 +30,15 @@ from app.services.attendance_service import (
 )
 from app.services.child_service import (
     duplicate_first_name_detail,
-    find_child_with_conflicting_first_name,
+    find_active_children_for_phone,
+    find_child_with_conflicting_first_name_for_phone,
     find_class_by_name,
-    find_parent_by_phone,
+    find_parents_by_phone,
     generate_child_code,
     generate_qr_code,
     get_or_create_parent,
     get_service_for_date,
+    phones_match,
 )
 from app.services.photo_service import decode_photo_base64
 from app.services.pickup_service import create_contact, ensure_primary_contact_from_parent, get_contact_for_child
@@ -89,18 +91,13 @@ def _apply_photo_to_contact(contact: AuthorizedPickupContact, photo_base64: str)
 
 
 def verify_child_for_parent_phone(db: Session, child_id: uuid.UUID, phone: str) -> Child:
-    parent = find_parent_by_phone(db, phone)
-    if not parent:
+    children = find_active_children_for_phone(db, phone)
+    for child in children:
+        if child.id == child_id:
+            return child
+    if not find_parents_by_phone(db, phone):
         raise CheckInError("Phone number not recognized", status_code=404)
-    child = (
-        db.query(Child)
-        .options(joinedload(Child.class_))
-        .filter(Child.id == child_id, Child.parent_id == parent.id, Child.is_active.is_(True))
-        .first()
-    )
-    if not child:
-        raise CheckInError("Child not found for this phone number", status_code=404)
-    return child
+    raise CheckInError("Child not found for this phone number", status_code=404)
 
 
 def _child_status(db: Session, child: Child, service: Service) -> KioskChildStatus:
@@ -121,19 +118,19 @@ def _child_status(db: Session, child: Child, service: Service) -> KioskChildStat
 
 
 def lookup_parent_children(db: Session, phone: str, service: Service) -> KioskLookupResponse | None:
-    parent = find_parent_by_phone(db, phone)
-    if not parent:
+    parents = find_parents_by_phone(db, phone)
+    if not parents:
         return None
-    children = (
-        db.query(Child)
-        .options(joinedload(Child.class_))
-        .filter(Child.parent_id == parent.id, Child.is_active.is_(True))
-        .order_by(Child.first_name, Child.last_name)
-        .all()
-    )
+    children = find_active_children_for_phone(db, phone)
+    # Prefer the parent name that actually has children when duplicates exist
+    primary_parent = parents[0]
+    for parent in parents:
+        if any(c.parent_id == parent.id for c in children):
+            primary_parent = parent
+            break
     return KioskLookupResponse(
-        parent_name=parent.full_name,
-        phone=parent.phone,
+        parent_name=primary_parent.full_name,
+        phone=primary_parent.phone,
         children=[_child_status(db, child, service) for child in children],
     )
 
@@ -163,15 +160,35 @@ def list_pickup_contacts(
         .order_by(AuthorizedPickupContact.is_primary.desc(), AuthorizedPickupContact.first_name)
         .all()
     )
-    return [
-        KioskPickupContactOption(
-            id=str(c.id),
-            full_name=c.full_name,
-            relationship=c.relationship,
-            has_photo=c.has_photo,
+
+    # If this contact has no photo, treat sibling contacts with the same phone as having one
+    sibling_photos: list[AuthorizedPickupContact] = []
+    for sibling in find_active_children_for_phone(db, phone):
+        if sibling.id == child_id:
+            continue
+        sibling_photos.extend(
+            db.query(AuthorizedPickupContact)
+            .filter(AuthorizedPickupContact.child_id == sibling.id)
+            .all()
         )
-        for c in contacts
-    ]
+
+    options: list[KioskPickupContactOption] = []
+    for c in contacts:
+        has_photo = c.has_photo
+        if not has_photo:
+            for other in sibling_photos:
+                if other.has_photo and phones_match(other.phone, c.phone):
+                    has_photo = True
+                    break
+        options.append(
+            KioskPickupContactOption(
+                id=str(c.id),
+                full_name=c.full_name,
+                relationship=c.relationship,
+                has_photo=has_photo,
+            )
+        )
+    return options
 
 
 def kiosk_add_pickup_contact(
@@ -243,21 +260,77 @@ def _checkout_response(service: Service, result) -> KioskCheckOutResponse:
     )
 
 
+def _find_sibling_parent_photo(
+    db: Session,
+    *,
+    phone: str,
+    exclude_child_id: uuid.UUID | None = None,
+) -> AuthorizedPickupContact | None:
+    """Find an existing parent/primary pickup photo among siblings for this phone."""
+    for sibling in find_active_children_for_phone(db, phone):
+        if exclude_child_id and sibling.id == exclude_child_id:
+            continue
+        contacts = (
+            db.query(AuthorizedPickupContact)
+            .filter(AuthorizedPickupContact.child_id == sibling.id)
+            .order_by(AuthorizedPickupContact.is_primary.desc())
+            .all()
+        )
+        for contact in contacts:
+            if not contact.has_photo:
+                continue
+            if contact.is_primary or phones_match(contact.phone, phone):
+                return contact
+    return None
+
+
+def _copy_photo_to_contact(target: AuthorizedPickupContact, source: AuthorizedPickupContact) -> None:
+    target.photo_data = source.photo_data
+    target.photo_content_type = source.photo_content_type
+
+
+def _propagate_parent_photo_to_siblings(
+    db: Session,
+    *,
+    phone: str,
+    source: AuthorizedPickupContact,
+) -> None:
+    """Copy a parent photo onto each sibling's primary contact that is missing one."""
+    for sibling in find_active_children_for_phone(db, phone):
+        primary = ensure_primary_contact_from_parent(db, sibling)
+        if primary.has_photo:
+            continue
+        if primary.id == source.id:
+            continue
+        _copy_photo_to_contact(primary, source)
+
+
 def _ensure_primary_photo(
     db: Session,
     child: Child,
     *,
+    phone: str,
     photo_base64: str | None,
 ) -> AuthorizedPickupContact:
     primary = ensure_primary_contact_from_parent(db, child)
     if primary.has_photo:
+        _propagate_parent_photo_to_siblings(db, phone=phone, source=primary)
         return primary
+
+    sibling_photo = _find_sibling_parent_photo(db, phone=phone, exclude_child_id=child.id)
+    if sibling_photo:
+        _copy_photo_to_contact(primary, sibling_photo)
+        db.flush()
+        _propagate_parent_photo_to_siblings(db, phone=phone, source=primary)
+        return primary
+
     if not photo_base64:
         raise CheckInError(
             "A photo of the parent or guardian is required. Please take a photo to continue.",
         )
     _apply_photo_to_contact(primary, photo_base64)
     db.flush()
+    _propagate_parent_photo_to_siblings(db, phone=phone, source=primary)
     return primary
 
 
@@ -275,7 +348,7 @@ def kiosk_check_in_child(
     if existing and not existing.checked_out:
         return _existing_tag_response(db, child, service, existing)
 
-    primary = _ensure_primary_photo(db, child, photo_base64=photo_base64)
+    primary = _ensure_primary_photo(db, child, phone=phone, photo_base64=photo_base64)
     result = perform_check_in(
         db,
         child_id=child.id,
@@ -301,12 +374,41 @@ def kiosk_check_out_child(
         raise CheckInError("Selected pickup person is not authorized for this child")
 
     if not contact.has_photo:
+        # Reuse a photo of the same person (matching phone) from a sibling's contacts
+        for sibling in find_active_children_for_phone(db, phone):
+            if sibling.id == child.id:
+                continue
+            siblings_contacts = (
+                db.query(AuthorizedPickupContact)
+                .filter(AuthorizedPickupContact.child_id == sibling.id)
+                .all()
+            )
+            for other in siblings_contacts:
+                if other.has_photo and phones_match(other.phone, contact.phone):
+                    _copy_photo_to_contact(contact, other)
+                    db.flush()
+                    break
+            if contact.has_photo:
+                break
+
+    if not contact.has_photo:
         if not photo_base64:
             raise CheckInError(
                 f"A photo of {contact.full_name} is required before pickup. Please take their photo.",
             )
         _apply_photo_to_contact(contact, photo_base64)
         db.flush()
+        # Share with siblings missing the same pickup person photo
+        for sibling in find_active_children_for_phone(db, phone):
+            if sibling.id == child.id:
+                continue
+            for other in (
+                db.query(AuthorizedPickupContact)
+                .filter(AuthorizedPickupContact.child_id == sibling.id)
+                .all()
+            ):
+                if not other.has_photo and phones_match(other.phone, contact.phone):
+                    _copy_photo_to_contact(other, contact)
 
     result = perform_check_out(
         db,
@@ -363,7 +465,7 @@ def kiosk_register_and_check_in(
         email=parent_email,
     )
 
-    conflict = find_child_with_conflicting_first_name(db, parent.id, child_first_name)
+    conflict = find_child_with_conflicting_first_name_for_phone(db, parent_phone, child_first_name)
     if conflict:
         raise CheckInError(duplicate_first_name_detail(conflict))
 
@@ -403,6 +505,9 @@ def kiosk_register_and_check_in(
 
     if additional_pickup:
         _create_pickup_from_person(db, child.id, additional_pickup, is_primary=False)
+
+    # Share parent photo with any siblings already under this phone
+    _propagate_parent_photo_to_siblings(db, phone=parent_phone, source=primary)
 
     result = perform_check_in(
         db,

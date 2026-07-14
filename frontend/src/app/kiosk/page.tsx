@@ -186,12 +186,7 @@ export default function KioskPage() {
     setSelectedChild(child);
     setBusy(true);
     try {
-      const contacts = await kioskGetPickupContacts(child.id, phone.trim());
-      const primary = contacts.find((c) => c.relationship === "Parent") ?? contacts[0];
-      if (primary && !primary.has_photo) {
-        setScreen("checkin-photo");
-        return;
-      }
+      // Backend reuses an existing parent photo from any sibling for this phone.
       const result = await kioskCheckIn(child.id, phone.trim());
       setTag(result);
       setScreen("success-checkin");

@@ -2,18 +2,22 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Search } from "lucide-react";
+import { Download, Search } from "lucide-react";
 import Link from "next/link";
 
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/ui/loading";
-import { apiGet } from "@/lib/api";
+import { apiDownload, apiGet } from "@/lib/api";
+import { useAuth } from "@/contexts/auth-context";
 import type { Parent } from "@/types";
 
 export default function ParentsPage() {
+  const { user } = useAuth();
   const [query, setQuery] = useState("");
+  const isAdmin = user?.role === "admin";
 
   const { data: parents = [], isFetching } = useQuery({
     queryKey: ["parents", query],
@@ -23,10 +27,29 @@ export default function ParentsPage() {
       ),
   });
 
+  const downloadContacts = async (format: "csv" | "excel") => {
+    const ext = format === "excel" ? "xlsx" : "csv";
+    await apiDownload(`/api/v1/parents/export?format=${format}`, `vkms-parents-contacts.${ext}`);
+  };
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        <h1 className="text-3xl font-bold">Parent Directory</h1>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-3xl font-bold">Parent Directory</h1>
+          {isAdmin && (
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => void downloadContacts("csv")}>
+                <Download className="h-4 w-4 mr-2" />
+                Download CSV
+              </Button>
+              <Button variant="outline" onClick={() => void downloadContacts("excel")}>
+                <Download className="h-4 w-4 mr-2" />
+                Download Excel
+              </Button>
+            </div>
+          )}
+        </div>
 
         <Card>
           <CardHeader>
@@ -54,7 +77,9 @@ export default function ParentsPage() {
                   href={`/parents/${parent.id}`}
                   className="block rounded-lg border p-4 hover:bg-accent/50 transition-colors"
                 >
-                  <p className="font-medium">{parent.first_name} {parent.last_name}</p>
+                  <p className="font-medium">
+                    {parent.first_name} {parent.last_name}
+                  </p>
                   <p className="text-sm text-muted-foreground">
                     {parent.phone} {parent.email && `· ${parent.email}`}
                   </p>

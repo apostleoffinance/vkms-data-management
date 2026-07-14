@@ -21,6 +21,7 @@ Important rules:
 - Never describe growth above 100% as "astounding" or "remarkable" unless attendance_growth_pct is provided and reasonable.
 - If retention_rate_pct is null, do NOT mention a retention percentage.
 - Be warm and professional, but factual and restrained.
+- Never include personal names, phone numbers, or other identifying details about children, parents, or workers.
 """
 
 
@@ -70,7 +71,7 @@ def _fallback_summary(metrics: dict) -> dict:
             f"{absent_count} children absent for 2+ consecutive services.",
         ],
         "recommendations": [
-            "Follow up with families of absent children listed in this report.",
+            "Download follow-up contacts separately and call families of children absent 2+ services.",
             "Review worker staffing against attendance levels.",
             "Welcome children checking in for the first time on the system.",
         ],

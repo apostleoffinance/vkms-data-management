@@ -1,11 +1,13 @@
 from fastapi import APIRouter, HTTPException, Query, status
+from fastapi.responses import Response
 from sqlalchemy.orm import joinedload
 
-from app.core.deps import DbSession, VerifiedUser
+from app.core.deps import AdminUser, DbSession, VerifiedUser
 from app.models.child import Child
 from app.models.parent import Parent
 from app.schemas.child import ParentLookupChild, ParentLookupResponse, ParentResponse
-from app.services.child_service import find_parent_by_phone
+from app.services.child_service import find_parent_by_phone, phone_match_key
+from app.services.report_service import export_csv, export_excel
 
 router = APIRouter()
 
@@ -44,6 +46,47 @@ def lookup_parent_by_phone(
             )
             for c in children
         ],
+    )
+
+
+@router.get("/export")
+def export_parents(
+    db: DbSession,
+    admin: AdminUser,
+    format: str = Query(default="csv", pattern="^(csv|excel)$"),
+) -> Response:
+    """Download parent names and phone numbers (deduped by match key)."""
+    parents = db.query(Parent).order_by(Parent.last_name, Parent.first_name).all()
+    seen: set[str] = set()
+    rows: list[dict] = []
+    for parent in parents:
+        key = phone_match_key(parent.phone) or parent.phone
+        if key in seen:
+            continue
+        seen.add(key)
+        rows.append(
+            {
+                "first_name": parent.first_name,
+                "last_name": parent.last_name,
+                "phone": parent.phone,
+                "alternative_phone": parent.alternative_phone or "",
+                "email": parent.email or "",
+            }
+        )
+
+    if format == "excel":
+        content = export_excel(rows, sheet_name="Parents")
+        media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        filename = "vkms_parents_contacts.xlsx"
+    else:
+        content = export_csv(rows)
+        media_type = "text/csv"
+        filename = "vkms_parents_contacts.csv"
+
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

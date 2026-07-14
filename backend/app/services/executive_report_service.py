@@ -203,25 +203,14 @@ def generate_executive_report_pdf(
 
     if metrics["workers_on_duty"]:
         elements.append(Paragraph("Workers on Duty", heading_style))
-        w_rows = [["Worker", "Check-in", "Date"]]
-        w_rows.extend(
-            [
-                [w["worker_name"], w["check_in"], w["service_date"]]
-                for w in metrics["workers_on_duty"]
-            ]
-        )
-        w_table = Table(w_rows, colWidths=[2.5 * inch, 1.2 * inch, 1.8 * inch], repeatRows=1)
-        w_table.setStyle(
-            TableStyle(
-                [
-                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0a0a0a")),
-                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
-                    ("FONTSIZE", (0, 0), (-1, -1), 8),
-                    ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-                ]
+        elements.append(
+            Paragraph(
+                f"{len(metrics['workers_on_duty'])} worker(s) checked in for this period. "
+                "Individual names are omitted for privacy.",
+                body_style,
             )
         )
-        elements.extend([w_table, Spacer(1, 10)])
+        elements.append(Spacer(1, 10))
 
     absent = metrics["absent_two_services"]
     elements.append(
@@ -231,22 +220,17 @@ def generate_executive_report_pdf(
         )
     )
     if absent:
-        a_rows = [["Child", "Class", "Parent", "Phone", "Last Attendance"]]
+        by_class: dict[str, int] = {}
+        for row in absent:
+            name = row.get("class_name") or "Unknown"
+            by_class[name] = by_class.get(name, 0) + 1
+        a_rows = [["Class", "Count"]]
         a_rows.extend(
-            [
-                [
-                    r["child_name"],
-                    r["class_name"],
-                    r["parent_name"],
-                    r["phone"],
-                    r["last_attendance"],
-                ]
-                for r in absent
-            ]
+            [[class_name, str(count)] for class_name, count in sorted(by_class.items(), key=lambda x: -x[1])]
         )
         a_table = Table(
             a_rows,
-            colWidths=[1.3 * inch, 0.9 * inch, 1.2 * inch, 1.0 * inch, 1.1 * inch],
+            colWidths=[3.5 * inch, 1.5 * inch],
             repeatRows=1,
         )
         a_table.setStyle(
@@ -254,13 +238,20 @@ def generate_executive_report_pdf(
                 [
                     ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#DC2626")),
                     ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
-                    ("FONTSIZE", (0, 0), (-1, -1), 7),
+                    ("FONTSIZE", (0, 0), (-1, -1), 8),
                     ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
                     ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#FEF2F2")]),
                 ]
             )
         )
         elements.append(a_table)
+        elements.append(
+            Paragraph(
+                "Child names, parent names, and phone numbers are not included on this report. "
+                "Download follow-up contacts separately when calling families.",
+                body_style,
+            )
+        )
     else:
         elements.append(Paragraph("No children require follow-up at this time.", body_style))
 
